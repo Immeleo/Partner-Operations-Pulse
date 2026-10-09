@@ -1,0 +1,29 @@
+{
+ "2026-10-09": {
+  "saved_at": "2026-10-09 19:34",
+  "total": 2046,
+  "partners": {
+   "Adrian FTTH": 2,
+   "Alternative FTTH": 36,
+   "Blockchain FTTH": 14,
+   "Camusat FTTH": 249,
+   "Corevantage FTTH": 61,
+   "Decko FTTH": 25,
+   "Egypro FTTH": 415,
+   "Fireside FTTH": 299,
+   "Geonet FTTH": 19,
+   "Hatikvah FTTH": 16,
+   "Huawei FTTH": 67,
+   "Kinde FTTH": 248,
+   "NextGen FTTH": 18,
+   "Optimax group FTTH": 81,
+   "Pavicon FTTH": 23,
+   "Powergen FTTH": 13,
+   "Quavatel FTTH": 20,
+   "Soliton FTTH": 138,
+   "Sovereign Comm FTTH": 150,
+   "Techminds FTTH": 15,
+   "Tetranet FTTH": 137
+  }
+ }
+}
