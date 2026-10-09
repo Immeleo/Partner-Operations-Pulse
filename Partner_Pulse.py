@@ -6,9 +6,9 @@ Reads TWO separate Excel files:
   2. Closed_Tickets.xlsx  (Completed / Closed tickets)
 
 Generates index.html with:
-  - Page 1: Daily Partner Operations Pulse
+  - Page 1: Daily Partner Operations Pulse (includes Closed & 4PM Cutoff KPIs)
   - Page 2: Partner Aging & Accountability Heatmap
-  - Page 3: Partner Output Performance & Productivity (ALL Partners + Top 5 Ranking)
+  - Page 3: Partner Output Performance & Productivity (Excludes 'Adrian' & 'Unassigned')
 
 Requires: pip install pandas openpyxl
 """
@@ -52,6 +52,9 @@ FOCUS_CATEGORY = "Maintenance"
 CUTOFF_HOUR = 16                  # 4:00 PM cut-off
 OUTPUT_GOOD = 70                  # Output % >= 70% -> Green
 OUTPUT_POOR = 40                  # Output % <= 40% -> Red
+
+# Partners / Assignment Groups to exclude from Page 3 Performance Table
+EXCLUDE_PARTNERS = ["Adrian", "Unassigned"]
 
 SERVE = True                      # Launch local http server
 PORT = 8000
@@ -548,6 +551,11 @@ def main():
 
     prev_label = datetime.strptime(prev_key, "%Y-%m-%d").strftime("%d %b") if prev_key else ""
 
+    # Totals for KPIs (Total Closed, Before 4PM Pending, After 4PM Pending)
+    total_closed_kpi = len(cdf) if cdf is not None else 0
+    total_before_kpi = int((~df["AfterCutoff"]).sum())
+    total_after_kpi = int(df["AfterCutoff"].sum())
+
     # ============================================================
     # PAGE 1 RENDER
     # ============================================================
@@ -558,7 +566,7 @@ def main():
          '<div class="chg" style="color:#6B7C93">n/a<small>first snapshot</small></div>')
     )
 
-    kpis = f"""
+    kpis_main = f"""
 <div class="row">
   <div class="card kpi" style="flex:1.15">
     <div class="ico" style="background:#1E6FD0">&#128196;</div>
@@ -571,6 +579,13 @@ def main():
       <div style="display:flex;align-items:flex-end;gap:14px"><div class="big">{num(overall['aged'])}</div>
       <div class="pctof">{overall['pct_aged']:.1f}% of total</div></div></div>
   </div>
+</div>"""
+
+    kpis_cutoff = f"""
+<div class="row">
+  <div class="card kpi" style="flex:1"><div class="ico" style="background:#1FA34A">&#10004;</div><div><div class="lbl">Total Closed</div><div class="big">{num(total_closed_kpi)}</div></div></div>
+  <div class="card kpi" style="flex:1"><div class="ico" style="background:#1E6FD0">&#128339;</div><div><div class="lbl">Before 4PM Pending</div><div class="big">{num(total_before_kpi)}</div></div></div>
+  <div class="card kpi" style="flex:1"><div class="ico" style="background:#78909C">&#128347;</div><div><div class="lbl">After 4PM Pending</div><div class="big">{num(total_after_kpi)}</div></div></div>
 </div>"""
 
     tiles = '<div class="tiles">' + "".join(
@@ -668,7 +683,8 @@ def main():
 <div class="page">
 {header(1, "Daily Partner Operations", "Pulse", "#3DDC84", f"Pending Tickets &nbsp;|&nbsp; As at {stamp}", "Focus. Close. Deliver.<br>Better Customer Experience.")}
 <div class="body">
-  {kpis}
+  {kpis_main}
+  {kpis_cutoff}
   {tiles}
   <div class="row grow">{backlog_card}{aging_card}</div>
   <div class="row grow">{focus_card}{impr_card}</div>
@@ -767,20 +783,20 @@ def main():
 </div>"""
 
     # ============================================================
-    # PAGE 3 RENDER (Partner Output Performance - ALL PARTNERS)
+    # PAGE 3 RENDER (Partner Output Performance - EXCLUDES Adrian & Unassigned)
     # ============================================================
 
     all_partners = sorted(list(set(df["Partner"].unique()) | (set(cdf["Partner"].unique()) if cdf is not None else set())))
-    if "Unassigned" in all_partners:
-        all_partners.remove("Unassigned")
-        all_partners.append("Unassigned")
+
+    # Exclude unwanted partners/unassigned from Page 3
+    p3_partners = [p for p in all_partners if p not in EXCLUDE_PARTNERS and p.lower() not in [e.lower() for e in EXCLUDE_PARTNERS]]
 
     p3_rows = []
     tot_conn, tot_maint, tot_pend, tot_bef, tot_aft, tot_closed, tot_teams = 0, 0, 0, 0, 0, 0, set()
 
     output_rankings = []
 
-    for p in all_partners:
+    for p in p3_partners:
         sub_p = df[df["Partner"] == p]
         c_sub = cdf[cdf["Partner"] == p] if cdf is not None else pd.DataFrame()
 
@@ -836,11 +852,6 @@ def main():
 <div class="page">
 {header(3, "Partner Output", "Performance", "#FFB74D", f"Data as at {stamp}", "Measure.<br>Accelerate.<br>Succeed.")}
 <div class="body">
-  <div class="row">
-    <div class="card kpi" style="flex:1"><div class="ico" style="background:#1FA34A">&#10004;</div><div><div class="lbl">Total Closed</div><div class="big">{num(tot_closed)}</div></div></div>
-    <div class="card kpi" style="flex:1"><div class="ico" style="background:#1E6FD0">&#128339;</div><div><div class="lbl">Before 4PM Pending</div><div class="big">{num(tot_bef)}</div></div></div>
-    <div class="card kpi" style="flex:1"><div class="ico" style="background:#78909C">&#128347;</div><div><div class="lbl">After 4PM Pending</div><div class="big">{num(tot_aft)}</div></div></div>
-  </div>
   <div class="row grow">
     <div class="card" style="flex:1.8;padding:10px 12px;overflow-y:auto">
       <h3 style="margin-bottom:6px">Partner Productivity & Output % Table</h3>
