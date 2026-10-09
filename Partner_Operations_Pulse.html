@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Partner Operations Pulse - 09 Oct 2026, 19:08</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@page { size: 1000px 1333px; margin: 0; }
+body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif; color: #12233F; }
+.page { width: 1000px; height: 1333px; margin: 24px auto; background: #EDF3FA; overflow: hidden;
+        position: relative; display: flex; flex-direction: column; box-shadow: 0 6px 24px rgba(10,30,60,.18); }
+@media print {
+  body { background: #fff; }
+  .page { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+}
+.hdr { height: 128px; background: linear-gradient(100deg, #0A2A5E 0%, #123F82 60%, #1B5DA8 100%);
+       color: #fff; position: relative; padding: 24px 30px 0 40px; flex: none; overflow: hidden; }
+.hdr .tag { position: absolute; left: 14px; top: 0; background: #1F9D55; color: #fff; font-size: 13px;
+            font-weight: 600; padding: 4px 12px; border-radius: 0 0 8px 8px; }
+.hdr h1 { font-size: 40px; font-weight: 800; letter-spacing: -.5px; margin-top: 8px; line-height: 1.1; }
+.hdr h1 span { color: var(--accent); }
+.hdr .sub { font-size: 17px; margin-top: 8px; opacity: .95; }
+.hdr .tagline { position: absolute; right: 92px; top: 52px; font-size: 14px; line-height: 1.35; max-width: 210px; }
+.hdr svg.tower { position: absolute; right: 8px; top: 8px; height: 118px; opacity: .85; }
+.body { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.row { display: flex; gap: 10px; }
+.row.grow { flex: 1; }
+.card { background: #fff; border: 1px solid #D5E1EF; border-radius: 12px; padding: 12px 16px; }
+.card h3 { font-size: 20px; font-weight: 700; color: #12233F; }
+.card h3 small { font-size: 16px; font-weight: 400; color: #4B5E78; }
+.kpi { display: flex; align-items: center; gap: 14px; height: 124px; }
+.kpi .ico { width: 54px; height: 62px; border-radius: 10px; display: flex; align-items: center;
+            justify-content: center; font-size: 30px; color: #fff; flex: none; }
+.kpi .lbl { font-size: 20px; font-weight: 700; }
+.kpi .big { font-size: 68px; font-weight: 800; line-height: 1; letter-spacing: -2px; }
+.kpi .chg { font-size: 22px; font-weight: 800; }
+.kpi .chg small { display: block; font-size: 13px; font-weight: 400; color: #4B5E78; }
+.kpi.alert { background: #FDECEC; border-color: #F6C6C6; }
+.kpi.alert .lbl, .kpi.alert .big { color: #E0242B; }
+.kpi.alert .ico { background: #E0242B; }
+.kpi .pctof { font-size: 16px; font-weight: 700; color: #E0242B; margin-top: 6px; }
+.tiles { display: flex; gap: 8px; }
+.tile { flex: 1; border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid #D5E1EF; text-align: center; }
+.tile .top { color: #fff; padding: 8px 0 4px; font-weight: 700; font-size: 15px; }
+.tile .top i { display: block; font-style: normal; font-size: 22px; margin-bottom: 2px; }
+.tile .n { font-size: 32px; font-weight: 800; padding-top: 6px; }
+.tile .p { font-size: 14px; color: #4B5E78; padding-bottom: 8px; }
+.donut-wrap { display: flex; align-items: center; gap: 18px; margin-top: 6px; }
+.donut { position: relative; width: 190px; height: 190px; flex: none; }
+.donut svg { width: 100%; height: 100%; transform: rotate(0deg); }
+.donut .mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+              justify-content: center; text-align: center; }
+.donut .mid b { font-size: 31px; line-height: 1; }
+.donut .mid span { font-size: 15px; font-weight: 600; line-height: 1.15; margin-top: 2px; }
+.legend div { display: flex; align-items: center; gap: 8px; font-size: 16px; line-height: 1.12; margin: 5px 0; }
+.legend i { width: 13px; height: 13px; border-radius: 3px; flex: none; }
+.legend b { font-weight: 700; }
+.agebar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; margin: 14px 0 10px; }
+.agecols { display: flex; text-align: center; }
+.agecols div { flex: 1; font-size: 15px; color: #4B5E78; line-height: 1.25; }
+.agecols b { display: block; font-size: 26px; }
+.callout { display: flex; align-items: center; gap: 14px; margin-top: 12px; background: #FDECEC;
+           border: 1px solid #F6C6C6; border-radius: 10px; padding: 10px 14px; color: #D0222A; }
+.callout .big { font-size: 33px; font-weight: 800; }
+.callout .txt { font-size: 16px; font-weight: 600; line-height: 1.2; flex: 1; }
+.callout .rq { font-size: 13px; font-weight: 600; width: 100px; border-left: 2px solid #F0B3B3; padding-left: 10px; line-height: 1.2; }
+.rank { display: flex; align-items: center; gap: 10px; margin: 9px 0; font-size: 17px; }
+.rank .bdg { width: 25px; height: 25px; border-radius: 50%; border: 2px solid #F29B3C; background: #FFF4E5;
+             color: #B25E00; font-weight: 700; font-size: 14px; display: flex; align-items: center;
+             justify-content: center; flex: none; }
+.rank .nm { width: 150px; flex: none; font-size: 17px; }
+.rank .bar { flex: 1; height: 24px; position: relative; }
+.rank .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; }
+.rank .val { font-weight: 800; min-width: 44px; text-align: right; }
+.rank.sm { margin: 8px 0; font-size: 14px; }
+.rank.sm .nm { width: 120px; font-size: 14px; }
+.rank.sm .bar { height: 20px; }
+.rank.sm .bdg { width: 21px; height: 21px; font-size: 12px; }
+.good { color: #1B8E4B; font-weight: 800; }
+.good small { font-weight: 600; margin-left: 6px; }
+.panel { border-radius: 12px; overflow: hidden; background: #fff; border: 1px solid #D5E1EF; flex: 1; }
+.panel .ph { color: #fff; font-size: 21px; font-weight: 700; padding: 11px 16px; display: flex; align-items: center; gap: 10px; }
+.panel .pb { padding: 6px 16px 10px; }
+.item { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
+.item .no { width: 30px; height: 30px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 16px;
+            display: flex; align-items: center; justify-content: center; flex: none; margin-top: 2px; }
+.item b { display: block; font-size: 17px; line-height: 1.2; }
+.item span { font-size: 14.5px; color: #3E5068; line-height: 1.25; display: block; }
+.item.win .no { background: #1F9D55; font-size: 17px; }
+.foot { font-size: 12px; color: #4B5E78; padding: 0 6px 4px; }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.tbl th { background: #E6EEF8; color: #12233F; padding: 6px 4px; font-weight: 700; border-bottom: 2px solid #C9D8EA; }
+table.tbl td { padding: 0 4px; height: 29px; text-align: center; border-bottom: 1px solid #E3EBF4; }
+table.tbl td.l, table.tbl th.l { text-align: left; padding-left: 8px; }
+table.tbl tr.oth td { background: #F4F7FB; }
+table.tbl tr.tot td { background: #E6EEF8; font-weight: 800; border-top: 2px solid #C9D8EA; }
+table.heat { table-layout: fixed; }
+table.heat td { padding: 0; height: 28px; font-size: 13px; }
+table.heat th { padding: 6px 0; font-size: 13px; }
+.red { color: #D0222A; font-weight: 800; }
+.legend2 { display: flex; gap: 14px; font-size: 13px; float: right; }
+.legend2 span i { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(0,0,0,.2); }
+.take { display: flex; gap: 12px; padding: 9px 0; align-items: flex-start; font-size: 15px; line-height: 1.3; }
+.take .no { width: 26px; height: 26px; border-radius: 50%; background: #1E6FD0; color: #fff; font-weight: 700;
+            font-size: 14px; display: flex; align-items: center; justify-content: center; flex: none; }
+</style></head>
+<body>
+<div class="page">
+
+<div class="hdr" style="--accent:#3DDC84">
+  <div class="tag">Page 1 of 2</div>
+  <h1>Daily Partner Operations <span>Pulse</span></h1>
+  <div class="sub">Pending Tickets &nbsp;|&nbsp; As at 09 Oct 2026, 19:08</div>
+  <div class="tagline">Focus. Close. Deliver.<br>Better Customer Experience.</div>
+  
+<svg class="tower" viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#9EC7F2" stroke-width="1.6">
+  <path d="M50 14 L26 126 M50 14 L74 126"/>
+  <path d="M42 50 L58 50 M38 70 L62 70 M34 92 L66 92 M30 112 L70 112"/>
+  <path d="M42 50 L62 70 M58 50 L38 70 M38 70 L66 92 M62 70 L34 92 M34 92 L70 112 M66 92 L30 112"/>
+  <circle cx="50" cy="12" r="3" fill="#FF6B6B" stroke="none"/>
+  <path d="M38 8 q12 -12 24 0 M32 4 q18 -18 36 0" stroke="#7FB5EE"/>
+</svg>
+
+</div>
+<div class="body">
+  
+<div class="row">
+  <div class="card kpi" style="flex:1.15">
+    <div class="ico" style="background:#1E6FD0">&#128196;</div>
+    <div><div class="lbl">Total Pending Tickets</div>
+      <div style="display:flex;align-items:flex-end;gap:14px"><div class="big">2,046</div><div class="chg" style="color:#6B7C93">n/a<small>first snapshot</small></div></div></div>
+  </div>
+  <div class="card kpi alert" style="flex:1">
+    <div class="ico">&#128339;</div>
+    <div><div class="lbl">&ge; 3 Days (Escalation)</div>
+      <div style="display:flex;align-items:flex-end;gap:14px"><div class="big">194</div>
+      <div class="pctof">9.5% of total</div></div></div>
+  </div>
+</div>
+  <div class="tiles"><div class="tile"><div class="top" style="background:#F28C1B"><i>&#128295;</i>Maintenance</div><div class="n" style="color:#F28C1B">1,140</div><div class="p">56% of total</div></div><div class="tile"><div class="top" style="background:#1E88E5"><i>&#128268;</i>Connections</div><div class="n" style="color:#1E88E5">742</div><div class="p">36% of total</div></div><div class="tile"><div class="top" style="background:#2E9B4F"><i>&#128260;</i>Relocation</div><div class="n" style="color:#2E9B4F">148</div><div class="p">7% of total</div></div><div class="tile"><div class="top" style="background:#7B3FE4"><i>&#127968;</i>FTTB</div><div class="n" style="color:#7B3FE4">12</div><div class="p">1% of total</div></div><div class="tile"><div class="top" style="background:#78909C"><i>&#128225;</i>PTMP</div><div class="n" style="color:#78909C">4</div><div class="p">0% of total</div></div><div class="tile"><div class="top" style="background:#9AA5B1"><i>&#8943;</i>Other</div><div class="n" style="color:#9AA5B1">0</div><div class="p">0% of total</div></div></div>
+  <div class="row grow">
+<div class="card" style="flex:.95">
+  <h3>Backlog by Category</h3>
+  <div class="donut-wrap">
+    <div class="donut">
+      <svg viewBox="0 0 42 42"><circle cx="21" cy="21" r="15.9155" fill="none" stroke="#EEF2F7" stroke-width="6.5"/><circle cx="21" cy="21" r="15.9155" fill="none" stroke="#F28C1B" stroke-width="6.5" stroke-dasharray="55.718 44.282" stroke-dashoffset="25.000"/><circle cx="21" cy="21" r="15.9155" fill="none" stroke="#1E88E5" stroke-width="6.5" stroke-dasharray="36.266 63.734" stroke-dashoffset="-30.718"/><circle cx="21" cy="21" r="15.9155" fill="none" stroke="#2E9B4F" stroke-width="6.5" stroke-dasharray="7.234 92.766" stroke-dashoffset="-66.984"/><circle cx="21" cy="21" r="15.9155" fill="none" stroke="#7B3FE4" stroke-width="6.5" stroke-dasharray="0.587 99.413" stroke-dashoffset="-74.218"/><circle cx="21" cy="21" r="15.9155" fill="none" stroke="#78909C" stroke-width="6.5" stroke-dasharray="0.196 99.804" stroke-dashoffset="-74.804"/></svg>
+      <div class="mid"><b>2,046</b><span>pending<br>tickets</span></div>
+    </div>
+    <div class="legend"><div><i style="background:#F28C1B"></i><span><b>Maintenance</b><br>1,140 (56%)</span></div><div><i style="background:#1E88E5"></i><span><b>Connections</b><br>742 (36%)</span></div><div><i style="background:#2E9B4F"></i><span><b>Relocation</b><br>148 (7%)</span></div><div><i style="background:#7B3FE4"></i><span><b>FTTB</b><br>12 (1%)</span></div><div><i style="background:#78909C"></i><span><b>PTMP</b><br>4 (0%)</span></div><div><i style="background:#9AA5B1"></i><span><b>Other</b><br>0 (0%)</span></div></div>
+  </div>
+</div>
+<div class="card" style="flex:1.05">
+  <h3>Ticket Aging Profile <small>(All Categories)</small></h3>
+  <div class="agebar">
+    <div style="width:90.5%;background:linear-gradient(90deg,#1FA34A,#58C05A)"></div>
+    <div style="width:7.9%;background:linear-gradient(90deg,#F5D23B,#F2A93B)"></div>
+    <div style="width:1.6%;background:#EF3B2D"></div>
+  </div>
+  <div class="agecols">
+    <div><b style="color:#1B8E4B">1,852</b>0&ndash;2 days<br>(90.5%)</div>
+    <div><b style="color:#E08A00">162</b>3&ndash;6 days<br>(7.9%)</div>
+    <div><b style="color:#D0222A">32</b>7+ days<br>(1.6%)</div>
+  </div>
+  <div class="callout">
+    <div class="big">194</div>
+    <div class="txt">tickets are &ge; 3 days old<br>9.5% of total backlog</div>
+    <div class="rq">Requires focus &amp; acceleration</div>
+  </div>
+</div></div>
+  <div class="row grow">
+<div class="card" style="flex:1">
+  <h3>Top 3 Partners by Total Backlog<br><small>(Maintenance category)</small></h3>
+  <div class="rank"><div class="bdg">1</div><div class="nm">Egypro FTTH</div><div class="bar"><i style="width:100%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val">275</div></div><div class="rank"><div class="bdg">2</div><div class="nm">Camusat FTTH</div><div class="bar"><i style="width:67%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val">185</div></div><div class="rank"><div class="bdg">3</div><div class="nm">Fireside FTTH</div><div class="bar"><i style="width:64%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val">176</div></div>
+</div>
+<div class="card" style="flex:1.1">
+  <h3>Top 3 Improvements<br><small>(vs previous run &ndash; overall pending)</small></h3>
+  <div style="color:#6B7C93;padding:14px 0">Comparisons appear from the next daily run (today is the first snapshot).</div>
+</div></div>
+  <div class="row grow">
+<div class="panel"><div class="ph" style="background:#133B80">&#9678; Today's Focus Areas</div><div class="pb">
+  <div class="item"><div class="no" style="background:#E0242B">1</div><div><b>Clear &ge; 3 day aged tickets (194)</b>
+     <span>Focus on Kinde FTTH, Egypro FTTH, Tetranet FTTH, Sovereign Comm FTTH, Huawei FTTH.</span></div></div>
+  <div class="item"><div class="no" style="background:#1E6FD0">2</div><div><b>Accelerate maintenance closures</b>
+     <span>Maintenance is 56% of total backlog (1,140 tickets).</span></div></div>
+  <div class="item"><div class="no" style="background:#1E6FD0">3</div><div><b>Review partner capacity and recovery plans</b>
+     <span>Address aging concentrations (see Page 2 heatmap).</span></div></div>
+</div></div>
+<div class="panel"><div class="ph" style="background:#1B8E4B">&#127942; Wins to Celebrate</div><div class="pb">
+  <div class="item win"><div class="no">&#10003;</div><div><span style="font-size:15px">Majority of tickets (91%) are 0&ndash;2 days old.</span></div></div><div class="item win"><div class="no">&#10003;</div><div><span style="font-size:15px">Relocation and PTMP remain low at 7% and 0% of total respectively.</span></div></div>
+  <div class="item win"><div style="color:#1B8E4B;font-weight:800;font-size:19px;padding-left:42px">Let's keep the momentum!</div></div>
+</div></div></div>
+  <div class="foot">*First snapshot saved - daily change will show from the next run.</div>
+</div>
+</div>
+<div class="page">
+
+<div class="hdr" style="--accent:#4FC3F7">
+  <div class="tag">Page 2 of 2</div>
+  <h1>Partner Aging &amp; Accountability <span>Heatmap</span></h1>
+  <div class="sub">Pending Tickets by Partner and Age (Days) &nbsp;|&nbsp; As at 09 Oct 2026, 19:08</div>
+  <div class="tagline">Right Partners.<br>Faster Closures.<br>Happier Customers.</div>
+  
+<svg class="tower" viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#9EC7F2" stroke-width="1.6">
+  <path d="M50 14 L26 126 M50 14 L74 126"/>
+  <path d="M42 50 L58 50 M38 70 L62 70 M34 92 L66 92 M30 112 L70 112"/>
+  <path d="M42 50 L62 70 M58 50 L38 70 M38 70 L66 92 M62 70 L34 92 M34 92 L70 112 M66 92 L30 112"/>
+  <circle cx="50" cy="12" r="3" fill="#FF6B6B" stroke="none"/>
+  <path d="M38 8 q12 -12 24 0 M32 4 q18 -18 36 0" stroke="#7FB5EE"/>
+</svg>
+
+</div>
+<div class="body">
+  <div class="row">
+<div class="card" style="flex:1.75;padding:10px 12px">
+  <h3 style="margin-bottom:6px">Partner Aging Summary <small>(All Categories)</small></h3>
+  <table class="tbl"><thead><tr><th>#</th><th class="l">Partner</th><th>Total</th>
+    <th>0&ndash;2 days</th><th>3&ndash;6 days</th><th>7+ days</th>
+    <th>&ge;3 days</th><th>% &ge;3d</th></tr></thead>
+  <tbody><tr class=""><td>1</td><td class="l">Egypro FTTH</td><td><b>415</b></td><td style="background:#5DBB63">396</td><td style="background:#fff9d3">14</td><td style="background:#ffe6c4">5</td><td style="background:#fcdede">19</td><td style="background:#FFFFFF">5%</td></tr><tr class=""><td>2</td><td class="l">Fireside FTTH</td><td><b>299</b></td><td style="background:#5DBB63">288</td><td style="background:#fff9d4">9</td><td style="background:#ffecd0">2</td><td style="background:#fde8e8">11</td><td style="background:#FFFFFF">4%</td></tr><tr class=""><td>3</td><td class="l">Camusat FTTH</td><td><b>249</b></td><td style="background:#5DBB63">243</td><td style="background:#fff9d7">6</td><td style="background:#fff">0</td><td style="background:#feeeee">6</td><td style="background:#FFFFFF">2%</td></tr><tr class=""><td>4</td><td class="l">Kinde FTTH</td><td><b>248</b></td><td style="background:#cce588">180</td><td style="background:#ffe491">52</td><td style="background:#fd924d">16</td><td style="background:#f4a3a3">68</td><td style="background:#ffbfbf">27%</td></tr><tr class=""><td>5</td><td class="l">Sovereign Comm FTTH</td><td><b>150</b></td><td style="background:#5DBB63">136</td><td style="background:#fff4bc">14</td><td style="background:#fff">0</td><td style="background:#fde4e4">14</td><td style="background:#fff6f6">9%</td></tr><tr class=""><td>6</td><td class="l">Soliton FTTH</td><td><b>138</b></td><td style="background:#5DBB63">126</td><td style="background:#fff6c7">9</td><td style="background:#ffdbad">3</td><td style="background:#fde7e7">12</td><td style="background:#fff7f7">9%</td></tr><tr class=""><td>7</td><td class="l">Tetranet FTTH</td><td><b>137</b></td><td style="background:#78c66d">118</td><td style="background:#fff1aa">19</td><td style="background:#fff">0</td><td style="background:#fcdede">19</td><td style="background:#ffeded">14%</td></tr><tr class=""><td>8</td><td class="l">Optimax group FTTH</td><td><b>81</b></td><td style="background:#7ec870">69</td><td style="background:#fff1ab">11</td><td style="background:#ffe5c3">1</td><td style="background:#fde7e7">12</td><td style="background:#ffebeb">15%</td></tr><tr class=""><td>9</td><td class="l">Huawei FTTH</td><td><b>67</b></td><td style="background:#94d178">55</td><td style="background:#fff0a6">10</td><td style="background:#ffd29a">2</td><td style="background:#fde7e7">12</td><td style="background:#ffe4e4">18%</td></tr><tr class=""><td>10</td><td class="l">Corevantage FTTH</td><td><b>61</b></td><td style="background:#67bf67">54</td><td style="background:#fff5c0">5</td><td style="background:#ffcd93">2</td><td style="background:#feeded">7</td><td style="background:#fff2f2">11%</td></tr><tr class="oth"><td></td><td class="l">Other partners</td><td><b>201</b></td><td style="background:#5DBB63">187</td><td style="background:#fff6c7">13</td><td style="background:#ffeed4">1</td><td style="background:#fde4e4">14</td><td style="background:#fffbfb">7%</td></tr><tr class="tot"><td></td><td class="l">Total</td><td>2,046</td><td>1,852</td><td>162</td><td>32</td><td>194</td><td>9.5%</td></tr></tbody></table>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px">
+  <div class="card" style="flex:1;padding:10px 12px"><h3 style="font-size:17px">Top 5 Partners by &ge; 3 Days<br>(Aged Tickets)</h3><div class="rank sm"><div class="bdg">1</div><div class="nm">Kinde FTTH</div><div class="bar"><i style="width:100%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val"><span style="font-weight:800">68</span></div></div><div class="rank sm"><div class="bdg">2</div><div class="nm">Egypro FTTH</div><div class="bar"><i style="width:28%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val"><span style="font-weight:800">19</span></div></div><div class="rank sm"><div class="bdg">3</div><div class="nm">Tetranet FTTH</div><div class="bar"><i style="width:28%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val"><span style="font-weight:800">19</span></div></div><div class="rank sm"><div class="bdg">4</div><div class="nm">Sovereign Comm FTTH</div><div class="bar"><i style="width:21%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val"><span style="font-weight:800">14</span></div></div><div class="rank sm"><div class="bdg">5</div><div class="nm">Huawei FTTH</div><div class="bar"><i style="width:18%;background:linear-gradient(90deg,#F04B4B,#E0242B)"></i></div><div class="val"><span style="font-weight:800">12</span></div></div></div>
+  <div class="card" style="flex:1;padding:10px 12px"><h3 style="font-size:17px">Top 5 Partners by % Aged (&ge;3d)</h3><div class="rank sm"><div class="bdg">1</div><div class="nm">Kinde FTTH</div><div class="bar"><i style="width:100%;background:linear-gradient(90deg,#F7B500,#F59B00)"></i></div><div class="val"><span style="font-weight:800">27%</span></div></div><div class="rank sm"><div class="bdg">2</div><div class="nm">Huawei FTTH</div><div class="bar"><i style="width:65%;background:linear-gradient(90deg,#F7B500,#F59B00)"></i></div><div class="val"><span style="font-weight:800">18%</span></div></div><div class="rank sm"><div class="bdg">3</div><div class="nm">NextGen FTTH</div><div class="bar"><i style="width:61%;background:linear-gradient(90deg,#F7B500,#F59B00)"></i></div><div class="val"><span style="font-weight:800">17%</span></div></div><div class="rank sm"><div class="bdg">4</div><div class="nm">Optimax group FTTH</div><div class="bar"><i style="width:54%;background:linear-gradient(90deg,#F7B500,#F59B00)"></i></div><div class="val"><span style="font-weight:800">15%</span></div></div><div class="rank sm"><div class="bdg">5</div><div class="nm">Alternative FTTH</div><div class="bar"><i style="width:51%;background:linear-gradient(90deg,#F7B500,#F59B00)"></i></div><div class="val"><span style="font-weight:800">14%</span></div></div></div>
+</div></div>
+  
+<div class="card" style="padding:10px 12px">
+  <h3 style="margin-bottom:6px">Partner Aging Heatmap <small>(Number of Tickets by Age in Days)</small>
+    <span class="legend2"><span><i style="background:#8DD58A"></i>Low</span><span><i style="background:#FFD966"></i>Moderate</span>
+    <span><i style="background:#FF8A50"></i>High</span><span><i style="background:#EF4B45"></i>Very high</span></span></h3>
+  <table class="tbl heat"><thead><tr><th style="width:26px">#</th><th class="l" style="width:150px">Partner</th><th style="background:#1E5FA8;color:#fff">0</th><th style="background:#1E5FA8;color:#fff">1</th><th style="background:#1E5FA8;color:#fff">2</th><th style="background:#1E5FA8;color:#fff">3</th><th style="background:#1E5FA8;color:#fff">4</th><th style="background:#1E5FA8;color:#fff">5</th><th style="background:#1E5FA8;color:#fff">6</th><th style="background:#1E5FA8;color:#fff">7</th><th style="background:#1E5FA8;color:#fff">8</th><th style="background:#1E5FA8;color:#fff">9</th><th style="background:#1E5FA8;color:#fff">10</th><th style="background:#1E5FA8;color:#fff">11</th><th style="background:#1E5FA8;color:#fff">12</th><th style="background:#1E5FA8;color:#fff">13</th><th style="background:#1E5FA8;color:#fff">14</th><th style="background:#1E5FA8;color:#fff">15</th><th style="background:#1E5FA8;color:#fff">16+</th>
+    <th style="width:48px">Total</th><th style="width:44px">&ge;3d</th></tr></thead>
+  <tbody><tr class=""><td>1</td><td class="l" style="white-space:nowrap">Egypro FTTH</td><td style="background:#6ec471;color:#1D3B22">279</td><td style="background:#83cd85;color:#1D3B22">96</td><td style="background:#a0d9a0;color:#1D3B22">21</td><td style="background:#FFD966;color:#4A3B00">7</td><td style="background:#FFD966;color:#4A3B00">4</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#FF8A50;color:#3D1F00">3</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>415</b></td><td class="">19</td></tr><tr class=""><td>2</td><td class="l" style="white-space:nowrap">Fireside FTTH</td><td style="background:#73c676;color:#1D3B22">215</td><td style="background:#8dd18d;color:#1D3B22">59</td><td style="background:#a8dca7;color:#1D3B22">14</td><td style="background:#FFD966;color:#4A3B00">5</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#FFC27A;color:#3D1F00">2</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>299</b></td><td class="">11</td></tr><tr class=""><td>3</td><td class="l" style="white-space:nowrap">Camusat FTTH</td><td style="background:#78c87a;color:#1D3B22">171</td><td style="background:#8ed18f;color:#1D3B22">54</td><td style="background:#a3daa2;color:#1D3B22">18</td><td style="background:#FFD966;color:#4A3B00">4</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>249</b></td><td class="">6</td></tr><tr class=""><td>4</td><td class="l" style="white-space:nowrap">Kinde FTTH</td><td style="background:#81cc83;color:#1D3B22">106</td><td style="background:#8ed18e;color:#1D3B22">56</td><td style="background:#a3daa2;color:#1D3B22">18</td><td style="background:#FFA94D;color:#3D1F00">14</td><td style="background:#FFD966;color:#4A3B00">8</td><td style="background:#FFD966;color:#4A3B00">9</td><td style="background:#FFA94D;color:#3D1F00">21</td><td style="background:#EF4B45;color:#FFFFFF">11</td><td style="background:#FFC27A;color:#3D1F00">2</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>248</b></td><td class="red">68</td></tr><tr class=""><td>5</td><td class="l" style="white-space:nowrap">Sovereign Comm FTTH</td><td style="background:#86ce87;color:#1D3B22">85</td><td style="background:#97d597;color:#1D3B22">34</td><td style="background:#a4daa3;color:#1D3B22">17</td><td style="background:#FFD966;color:#4A3B00">8</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#FFD966;color:#4A3B00">4</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>150</b></td><td class="">14</td></tr><tr class=""><td>6</td><td class="l" style="white-space:nowrap">Soliton FTTH</td><td style="background:#88cf89;color:#1D3B22">76</td><td style="background:#98d598;color:#1D3B22">32</td><td style="background:#a3daa2;color:#1D3B22">18</td><td style="background:#FFD966;color:#4A3B00">7</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>138</b></td><td class="">12</td></tr><tr class=""><td>7</td><td class="l" style="white-space:nowrap">Tetranet FTTH</td><td style="background:#8acf8b;color:#1D3B22">68</td><td style="background:#97d597;color:#1D3B22">34</td><td style="background:#a5dba4;color:#1D3B22">16</td><td style="background:#FFD966;color:#4A3B00">9</td><td style="background:#FFD966;color:#4A3B00">6</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>137</b></td><td class="">19</td></tr><tr class=""><td>8</td><td class="l" style="white-space:nowrap">Optimax group FTTH</td><td style="background:#91d291;color:#1D3B22">48</td><td style="background:#a7dba5;color:#1D3B22">15</td><td style="background:#b7e2b5;color:#1D3B22">6</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#FFD966;color:#4A3B00">6</td><td style="background:#FFF1A6;color:#4A3B00">3</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>81</b></td><td class="">12</td></tr><tr class=""><td>9</td><td class="l" style="white-space:nowrap">Huawei FTTH</td><td style="background:#96d496;color:#1D3B22">37</td><td style="background:#acdeab;color:#1D3B22">11</td><td style="background:#b4e1b2;color:#1D3B22">7</td><td style="background:#FFD966;color:#4A3B00">4</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#FFF1A6;color:#4A3B00">3</td><td style="background:#FFC27A;color:#3D1F00">2</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>67</b></td><td class="">12</td></tr><tr class=""><td>10</td><td class="l" style="white-space:nowrap">Corevantage FTTH</td><td style="background:#94d494;color:#1D3B22">40</td><td style="background:#a8dca7;color:#1D3B22">14</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#FFF1A6;color:#4A3B00">2</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFF1A6;color:#4A3B00">1</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#FFC27A;color:#3D1F00">1</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td style="background:#F7FAF9;color:#A3AEB8">0</td><td><b>61</b></td><td class="">7</td></tr><tr class="oth"><td></td><td class="l" style="white-space:nowrap">Other partners</td><td>146</td><td>33</td><td>8</td><td>9</td><td>2</td><td>1</td><td>1</td><td>0</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td><b>201</b></td><td class="">14</td></tr><tr class="tot"><td></td><td class="l" style="white-space:nowrap">Total</td><td>1271</td><td>438</td><td>143</td><td>71</td><td>34</td><td>24</td><td>33</td><td>21</td><td>4</td><td>3</td><td>2</td><td>2</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td><b>2,046</b></td><td class="">194</td></tr></tbody></table>
+</div>
+  <div class="row grow">
+<div class="card" style="flex:1.05;padding:10px 12px">
+  <h3 style="margin-bottom:6px">Aging by Category <small>(&ge; 3 Days)</small></h3>
+  <table class="tbl"><thead><tr><th class="l">Category</th><th>Total</th><th>0&ndash;2d</th>
+    <th>3&ndash;6d</th><th>7+d</th><th>&ge;3d</th><th>% &ge;3d</th></tr></thead>
+  <tbody><tr><td class="l" style="color:#F28C1B;font-weight:700">Maintenance</td><td>1,140</td><td>1,093</td><td>44</td><td>3</td><td>47</td><td style="background:#FFFFFF;font-weight:700">4.1%</td></tr><tr><td class="l" style="color:#1E88E5;font-weight:700">Connections</td><td>742</td><td>613</td><td>102</td><td>27</td><td>129</td><td style="background:#ffe5e5;font-weight:700">17.4%</td></tr><tr><td class="l" style="color:#2E9B4F;font-weight:700">Relocation</td><td>148</td><td>132</td><td>15</td><td>1</td><td>16</td><td style="background:#fff3f3;font-weight:700">10.8%</td></tr><tr><td class="l" style="color:#7B3FE4;font-weight:700">FTTB</td><td>12</td><td>11</td><td>1</td><td>0</td><td>1</td><td style="background:#fff8f8;font-weight:700">8.3%</td></tr><tr><td class="l" style="color:#78909C;font-weight:700">PTMP</td><td>4</td><td>3</td><td>0</td><td>1</td><td>1</td><td style="background:#ffcaca;font-weight:700">25.0%</td></tr><tr><td class="l" style="color:#9AA5B1;font-weight:700">Other</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td style="background:#FFFFFF;font-weight:700">0.0%</td></tr><tr class="tot"><td class="l">Total</td><td>2,046</td><td>1,852</td><td>162</td><td>32</td><td>194</td><td>9.5%</td></tr></tbody></table>
+</div>
+<div class="panel" style="flex:.95"><div class="ph" style="background:#133B80">&#128202; Key Takeaways</div>
+<div class="pb"><div class="take"><div class="no">1</div><div>194 tickets (9.5%) are &ge; 3 days old (escalation threshold).</div></div><div class="take"><div class="no">2</div><div>Kinde FTTH, Egypro FTTH, Tetranet FTTH, Sovereign Comm FTTH and Huawei FTTH account for 132 of 194 aged tickets (68%).</div></div><div class="take"><div class="no">3</div><div>Connections has the highest proportion of aged tickets (17%).</div></div><div class="take"><div class="no">4</div><div>Focus partner recovery plans on queues with the highest 3+ day concentrations (see heatmap).</div></div></div></div></div>
+</div>
+</div></body></html>
