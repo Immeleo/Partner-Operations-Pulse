@@ -1,9 +1,14 @@
 """
-Partner Operations Pulse - 2-page dashboard built from pending tickets.
+PARTNER OPERATIONS PULSE (3-Page Dashboard)
+--------------------------------------------------------
+Reads TWO separate Excel files:
+  1. Pending_Tickets.xlsx (Open / Pending backlog)
+  2. Closed_Tickets.xlsx  (Completed / Closed tickets)
 
-Reads Pending_Tickets.xlsx (next to this script), writes
-index.html and serves it on your own machine.
-Run the script, then click the http://localhost link it prints.
+Generates index.html with:
+  - Page 1: Daily Partner Operations Pulse
+  - Page 2: Partner Aging & Accountability Heatmap
+  - Page 3: Partner Output Performance & Productivity (ALL Partners + Top 5 Ranking)
 
 Requires: pip install pandas openpyxl
 """
@@ -26,28 +31,31 @@ import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent
 
-PENDING_TICKETS_FILE = "Pending_Tickets.xlsx"
+PENDING_FILE = "Pending_Tickets.xlsx"
+CLOSED_FILE = "Closed_Tickets.xlsx"
 OUTPUT_HTML = "index.html"
-
-# Daily totals are stored here so "vs yesterday" can be calculated.
 HISTORY_FILE = "pending_history.json"
 
-# Report "as at" time. Use e.g. datetime(2026, 10, 8, 8, 10) to force a time.
 REPORT_TIME = datetime.now()
 
-# Age bands in whole days since creation
+# Age thresholds
 FRESH_MAX = 2                     # 0-2 days: on track
 WATCH_MAX = 6                     # 3-6 days: ageing; 7+ days: critical
 ESCALATION_FROM = FRESH_MAX + 1
 
-HEATMAP_MAX_AGE = 16              # ages at or above this share the last column
-TOP_N_PARTNERS = 10               # remaining partners are grouped as "Other partners"
-MIN_TICKETS_FOR_PCT_RANKING = 10  # ignore tiny queues in "Top 5 by % aged"
-FOCUS_CATEGORY = "Maintenance"    # category used in "Top 3 Partners by Backlog"
+HEATMAP_MAX_AGE = 16              # Ages >= 16 share the last heatmap column
+TOP_N_PARTNERS = 10               # Main partners listed individually on Page 2
+MIN_TICKETS_FOR_PCT_RANKING = 10  # Minimum queue size for % rankings
+FOCUS_CATEGORY = "Maintenance"
 
-SERVE = True            # serve the report at a local http://localhost link
-PORT = 8000             # next free port is used if this one is busy
-OPEN_BROWSER = True     # also open the link automatically
+# Page 3 Cut-offs and benchmarks
+CUTOFF_HOUR = 16                  # 4:00 PM cut-off
+OUTPUT_GOOD = 70                  # Output % >= 70% -> Green
+OUTPUT_POOR = 40                  # Output % <= 40% -> Red
+
+SERVE = True                      # Launch local http server
+PORT = 8000
+OPEN_BROWSER = True               # Open in default browser automatically
 
 CATEGORIES = ["Maintenance", "Connections", "Relocation", "FTTB", "PTMP", "Other"]
 
@@ -78,6 +86,8 @@ CATEGORY_MAP = {
     "Relocation": "Relocation",
 }
 
+TEAM_COLUMNS = ["Teams", "Team", "Assigned to", "Assignee", "Resolved by", "Closed by", "Technician", "Engineer"]
+
 
 # ============================================================
 # HELPERS
@@ -88,22 +98,19 @@ def esc(value):
 
 
 def num(value):
-    return f"{int(value):,}"
+    return f"{int(value):,}" if value is not None else "-"
 
 
 def pct(part, whole):
-    return part / whole * 100 if whole else 0.0
+    return (part / whole * 100) if whole else 0.0
 
 
 def clean_text(value):
     if pd.isna(value):
         return ""
-
     text = str(value).strip().lower()
-
     for character in "_-/\\,.:;|":
         text = text.replace(character, " ")
-
     return " ".join(text.split())
 
 
@@ -111,18 +118,21 @@ def find_column(df, name):
     for column in df.columns:
         if str(column).strip().lower() == name.lower():
             return column
-
     return None
 
 
 def clean_partner(value):
     if pd.isna(value):
         return "Unassigned"
-
     text = " ".join(str(value).split())
     text = re.sub(r"^agents?\s+", "", text, flags=re.IGNORECASE)
-
     return text or "Unassigned"
+
+
+def raw_partner(value):
+    if pd.isna(value):
+        return "Unassigned"
+    return " ".join(str(value).split()) or "Unassigned"
 
 
 def hex_to_rgb(color):
@@ -133,24 +143,61 @@ def hex_to_rgb(color):
 def mix(c1, c2, t):
     t = max(0.0, min(1.0, t))
     a, b = hex_to_rgb(c1), hex_to_rgb(c2)
-
     return "#%02x%02x%02x" % tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
 def ramp(value, stops):
-    """Colour for `value` along [(position, colour), ...] stops."""
     if value <= stops[0][0]:
         return stops[0][1]
-
     for (p1, c1), (p2, c2) in zip(stops, stops[1:]):
         if value <= p2:
             return mix(c1, c2, (value - p1) / (p2 - p1))
-
     return stops[-1][1]
 
 
+def heat_cell(age, value):
+    if value == 0:
+        return "#F7FAF9", "#A3AEB8"
+    if age <= FRESH_MAX:
+        t = min(1.0, math.log10(value + 1) / 2.5)
+        return mix("#DDF2D8", "#6CC36F", t), "#1D3B22"
+    if age <= WATCH_MAX:
+        if value <= 3:
+            return "#FFF1A6", "#4A3B00"
+        if value <= 10:
+            return "#FFD966", "#4A3B00"
+        if value <= 30:
+            return "#FFA94D", "#3D1F00"
+        return "#FF7043", "#FFFFFF"
+    if value <= 2:
+        return "#FFC27A", "#3D1F00"
+    if value <= 10:
+        return "#FF8A50", "#3D1F00"
+    return "#EF4B45", "#FFFFFF"
+
+
+def colour_fresh(share):
+    return ramp(share, [(0.30, "#F6A15C"), (0.55, "#FFE27A"), (0.75, "#C5E58A"), (0.90, "#5DBB63")])
+
+
+def colour_watch(share):
+    return ramp(share, [(0.0, "#FFFBE0"), (0.15, "#FFF0A6"), (0.35, "#FFC861"), (0.55, "#FF9A4D")])
+
+
+def colour_old(share):
+    return ramp(share, [(0.0, "#FFF3E0"), (0.03, "#FFD29A"), (0.06, "#FF9A4D"), (0.10, "#EF5350")])
+
+
+def colour_aged_count(count, biggest):
+    return ramp(count / biggest if biggest else 0, [(0.0, "#FFF5F5"), (1.0, "#F4A3A3")])
+
+
+def colour_pct_aged(value):
+    return ramp(value / 100, [(0.05, "#FFFFFF"), (0.20, "#FFE0E0"), (0.30, "#FFB4B4"), (0.60, "#EF5350")])
+
+
 # ============================================================
-# CLASSIFICATION
+# CLASSIFICATION & DATA INGESTION
 # ============================================================
 
 def classify_issue_type(row):
@@ -187,132 +234,100 @@ def dashboard_category(row):
     return CATEGORY_MAP.get(classify_issue_type(row), "Other")
 
 
-# ============================================================
-# DATA LOADING AND PREPARATION
-# ============================================================
+def work_type_category(row):
+    cat = dashboard_category(row)
+    if cat in ("Connections", "FTTB"):
+        return "Connection"
+    if cat == "Maintenance":
+        return "Maintenance"
+    return None
 
-def load_pending(path):
-    excel = pd.ExcelFile(path)
-    print("Sheets found:", ", ".join(excel.sheet_names))
 
-    collected_frames = []
+def load_two_files():
+    pending_path = DATA_DIR / PENDING_FILE
+    closed_path = DATA_DIR / CLOSED_FILE
 
-    # Check for sheets explicitly named 'pending'
-    pending_sheets = [s for s in excel.sheet_names if "pending" in s.lower()]
+    if not pending_path.exists():
+        print(f"ERROR: {PENDING_FILE} not found in {DATA_DIR}")
+        sys.exit(1)
 
-    if pending_sheets:
-        for s in pending_sheets:
-            print(f"Reading pending sheet: {s}")
-            temp = excel.parse(s)
-            if not temp.empty:
-                collected_frames.append(temp)
+    print(f"Reading Pending data from: {pending_path.name}")
+    p_excel = pd.ExcelFile(pending_path)
+    p_frames = [p_excel.parse(s) for s in p_excel.sheet_names]
+    df_pending = pd.concat(p_frames, ignore_index=True)
+    df_pending.columns = [str(c).strip() for c in df_pending.columns]
+
+    df_closed = None
+    if closed_path.exists():
+        print(f"Reading Closed data from: {closed_path.name}")
+        c_excel = pd.ExcelFile(closed_path)
+        c_frames = [c_excel.parse(s) for s in c_excel.sheet_names]
+        df_closed = pd.concat(c_frames, ignore_index=True)
+        df_closed.columns = [str(c).strip() for c in df_closed.columns]
     else:
-        # Check all sheets for ticket data
-        for name in excel.sheet_names:
-            temp = excel.parse(name)
-            if temp.empty:
-                continue
+        print(f"WARNING: {CLOSED_FILE} not found. Closed metrics will be zero.")
 
-            lookup = {str(c).strip().lower(): c for c in temp.columns}
-
-            if "assignment group" in lookup and "created" in lookup:
-                if "state" in lookup:
-                    state = temp[lookup["state"]].fillna("").astype(str).str.upper()
-                    # Keep all rows except explicitly completed/closed ones
-                    active_rows = temp[~state.str.contains(r"RESOLV|CLOSE|CANCEL|COMPLET", regex=True, na=False)]
-                    if not active_rows.empty:
-                        print(f"Reading active rows from sheet: {name} ({len(active_rows)} rows)")
-                        collected_frames.append(active_rows)
-                else:
-                    print(f"Reading all rows from sheet: {name} ({len(temp)} rows)")
-                    collected_frames.append(temp)
-
-    if not collected_frames:
-        # Final fallback: concatenate all non-empty sheets in the workbook
-        print("Fallback: Combining all non-empty sheets in workbook...")
-        for name in excel.sheet_names:
-            temp = excel.parse(name)
-            if not temp.empty:
-                collected_frames.append(temp)
-
-    if not collected_frames:
-        raise ValueError("Could not find any ticket data in the provided Excel file.")
-
-    df = pd.concat(collected_frames, ignore_index=True)
-    df.columns = [str(c).strip() for c in df.columns]
-
-    return df
+    return df_pending, df_closed
 
 
-def prepare(df):
+def prepare_pending(df):
     group_col = find_column(df, "Assignment group")
     created_col = find_column(df, "Created")
 
-    for label, col in [("Assignment group", group_col), ("Created", created_col)]:
-        if col is None:
-            raise ValueError(
-                f"Pending data has no '{label}' column.\nColumns found: {list(df.columns)}"
-            )
+    if group_col is None or created_col is None:
+        raise ValueError(f"Pending file missing 'Assignment group' or 'Created'. Found: {list(df.columns)}")
 
     df["Partner"] = df[group_col].apply(clean_partner)
+    df["PartnerRaw"] = df[group_col].apply(raw_partner)
     df["Category"] = df.apply(dashboard_category, axis=1)
+    df["WorkType"] = df.apply(work_type_category, axis=1)
 
-    # Robust multi-format date parsing across all records
     created = pd.to_datetime(df[created_col], errors="coerce", format="ISO8601")
-
-    bad = created.isna()
-    if bad.any():
-        created.loc[bad] = pd.to_datetime(df.loc[bad, created_col], errors="coerce")
-
     bad = created.isna()
     if bad.any():
         created.loc[bad] = pd.to_datetime(df.loc[bad, created_col], errors="coerce", dayfirst=True)
 
-    bad = created.isna()
-    if bad.any():
-        created.loc[bad] = pd.to_datetime(
-            df.loc[bad, created_col].astype(str), errors="coerce", format="mixed"
-        )
+    df["_Created"] = created
+    df["Age"] = (pd.Timestamp(REPORT_TIME) - created).dt.days.fillna(0).clip(lower=0).astype(int)
 
-    age = (pd.Timestamp(REPORT_TIME) - created).dt.days
-
-    unknown = int(age.isna().sum())
-    if unknown:
-        print()
-        print(f"WARNING: {unknown} ticket(s) have a 'Created' value that could not")
-        print("be read as a date. They are counted in totals as age 0.")
-        print("Sample values:", df.loc[age.isna(), created_col].head(5).tolist())
-        print()
-
-    df["Age"] = age.fillna(0).clip(lower=0).astype(int)
+    cutoff_dt = REPORT_TIME.replace(hour=CUTOFF_HOUR, minute=0, second=0, microsecond=0)
+    df["AfterCutoff"] = (created >= cutoff_dt).fillna(False).astype(bool)
 
     return df
+
+
+def prepare_closed(cdf):
+    if cdf is None or cdf.empty:
+        return None, None
+    group_col = find_column(cdf, "Assignment group")
+    if not group_col:
+        print("WARNING: Closed file missing 'Assignment group' column.")
+        return None, None
+
+    cdf["Partner"] = cdf[group_col].apply(clean_partner)
+    cdf["PartnerRaw"] = cdf[group_col].apply(raw_partner)
+    cdf["WorkType"] = cdf.apply(work_type_category, axis=1)
+
+    team_col = None
+    for name in TEAM_COLUMNS:
+        team_col = find_column(cdf, name)
+        if team_col:
+            break
+
+    return cdf, team_col
 
 
 def summarize(sub):
     ages = sub["Age"]
     total = len(sub)
-
     fresh = int((ages <= FRESH_MAX).sum())
     watch = int(((ages > FRESH_MAX) & (ages <= WATCH_MAX)).sum())
     old = int((ages > WATCH_MAX).sum())
     aged = watch + old
-
-    counts = (
-        ages.clip(upper=HEATMAP_MAX_AGE)
-        .value_counts()
-        .reindex(range(HEATMAP_MAX_AGE + 1), fill_value=0)
-        .tolist()
-    )
-
+    counts = ages.clip(upper=HEATMAP_MAX_AGE).value_counts().reindex(range(HEATMAP_MAX_AGE + 1), fill_value=0).tolist()
     return {
-        "total": total,
-        "fresh": fresh,
-        "watch": watch,
-        "old": old,
-        "aged": aged,
-        "pct_aged": pct(aged, total),
-        "counts": counts,
+        "total": total, "fresh": fresh, "watch": watch, "old": old,
+        "aged": aged, "pct_aged": pct(aged, total), "counts": counts
     }
 
 
@@ -326,56 +341,6 @@ def load_history(path):
 def previous_snapshot(history, today_key):
     keys = sorted(k for k in history if k < today_key)
     return (history[keys[-1]], keys[-1]) if keys else (None, None)
-
-
-# ============================================================
-# COLOUR RULES
-# ============================================================
-
-def colour_fresh(share):
-    return ramp(share, [(0.30, "#F6A15C"), (0.55, "#FFE27A"), (0.75, "#C5E58A"), (0.90, "#5DBB63")])
-
-
-def colour_watch(share):
-    return ramp(share, [(0.0, "#FFFBE0"), (0.15, "#FFF0A6"), (0.35, "#FFC861"), (0.55, "#FF9A4D")])
-
-
-def colour_old(share):
-    return ramp(share, [(0.0, "#FFF3E0"), (0.03, "#FFD29A"), (0.06, "#FF9A4D"), (0.10, "#EF5350")])
-
-
-def colour_aged_count(count, biggest):
-    return ramp(count / biggest if biggest else 0, [(0.0, "#FFF5F5"), (1.0, "#F4A3A3")])
-
-
-def colour_pct_aged(value):
-    return ramp(value / 100, [(0.05, "#FFFFFF"), (0.20, "#FFE0E0"), (0.30, "#FFB4B4"), (0.60, "#EF5350")])
-
-
-def heat_cell(age, value):
-    """Return (background, text colour) for one heatmap cell."""
-    if value == 0:
-        return "#F7FAF9", "#A3AEB8"
-
-    if age <= FRESH_MAX:
-        t = min(1.0, math.log10(value + 1) / 2.5)
-        return mix("#DDF2D8", "#6CC36F", t), "#1D3B22"
-
-    if age <= WATCH_MAX:
-        if value <= 3:
-            return "#FFF1A6", "#4A3B00"
-        if value <= 10:
-            return "#FFD966", "#4A3B00"
-        if value <= 30:
-            return "#FFA94D", "#3D1F00"
-        return "#FF7043", "#FFFFFF"
-
-    if value <= 2:
-        return "#FFC27A", "#3D1F00"
-    if value <= 10:
-        return "#FF8A50", "#3D1F00"
-
-    return "#EF4B45", "#FFFFFF"
 
 
 # ============================================================
@@ -410,8 +375,7 @@ body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif;
 .card h3 { font-size: 20px; font-weight: 700; color: #12233F; }
 .card h3 small { font-size: 16px; font-weight: 400; color: #4B5E78; }
 .kpi { display: flex; align-items: center; gap: 14px; height: 124px; }
-.kpi .ico { width: 54px; height: 62px; border-radius: 10px; display: flex; align-items: center;
-            justify-content: center; font-size: 30px; color: #fff; flex: none; }
+.kpi .ico { width: 54px; height: 62px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff; flex: none; }
 .kpi .lbl { font-size: 20px; font-weight: 700; }
 .kpi .big { font-size: 68px; font-weight: 800; line-height: 1; letter-spacing: -2px; }
 .kpi .chg { font-size: 22px; font-weight: 800; }
@@ -429,8 +393,7 @@ body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif;
 .donut-wrap { display: flex; align-items: center; gap: 18px; margin-top: 6px; }
 .donut { position: relative; width: 190px; height: 190px; flex: none; }
 .donut svg { width: 100%; height: 100%; transform: rotate(0deg); }
-.donut .mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-              justify-content: center; text-align: center; }
+.donut .mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .donut .mid b { font-size: 31px; line-height: 1; }
 .donut .mid span { font-size: 15px; font-weight: 600; line-height: 1.15; margin-top: 2px; }
 .legend div { display: flex; align-items: center; gap: 8px; font-size: 16px; line-height: 1.12; margin: 5px 0; }
@@ -440,15 +403,12 @@ body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif;
 .agecols { display: flex; text-align: center; }
 .agecols div { flex: 1; font-size: 15px; color: #4B5E78; line-height: 1.25; }
 .agecols b { display: block; font-size: 26px; }
-.callout { display: flex; align-items: center; gap: 14px; margin-top: 12px; background: #FDECEC;
-           border: 1px solid #F6C6C6; border-radius: 10px; padding: 10px 14px; color: #D0222A; }
+.callout { display: flex; align-items: center; gap: 14px; margin-top: 12px; background: #FDECEC; border: 1px solid #F6C6C6; border-radius: 10px; padding: 10px 14px; color: #D0222A; }
 .callout .big { font-size: 33px; font-weight: 800; }
 .callout .txt { font-size: 16px; font-weight: 600; line-height: 1.2; flex: 1; }
 .callout .rq { font-size: 13px; font-weight: 600; width: 100px; border-left: 2px solid #F0B3B3; padding-left: 10px; line-height: 1.2; }
 .rank { display: flex; align-items: center; gap: 10px; margin: 9px 0; font-size: 17px; }
-.rank .bdg { width: 25px; height: 25px; border-radius: 50%; border: 2px solid #F29B3C; background: #FFF4E5;
-             color: #B25E00; font-weight: 700; font-size: 14px; display: flex; align-items: center;
-             justify-content: center; flex: none; }
+.rank .bdg { width: 25px; height: 25px; border-radius: 50%; border: 2px solid #F29B3C; background: #FFF4E5; color: #B25E00; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex: none; }
 .rank .nm { width: 150px; flex: none; font-size: 17px; }
 .rank .bar { flex: 1; height: 24px; position: relative; }
 .rank .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; }
@@ -463,15 +423,14 @@ body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif;
 .panel .ph { color: #fff; font-size: 21px; font-weight: 700; padding: 11px 16px; display: flex; align-items: center; gap: 10px; }
 .panel .pb { padding: 6px 16px 10px; }
 .item { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
-.item .no { width: 30px; height: 30px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 16px;
-            display: flex; align-items: center; justify-content: center; flex: none; margin-top: 2px; }
+.item .no { width: 30px; height: 30px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; flex: none; margin-top: 2px; }
 .item b { display: block; font-size: 17px; line-height: 1.2; }
 .item span { font-size: 14.5px; color: #3E5068; line-height: 1.25; display: block; }
 .item.win .no { background: #1F9D55; font-size: 17px; }
 .foot { font-size: 12px; color: #4B5E78; padding: 0 6px 4px; }
-table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.tbl th { background: #E6EEF8; color: #12233F; padding: 6px 4px; font-weight: 700; border-bottom: 2px solid #C9D8EA; }
-table.tbl td { padding: 0 4px; height: 29px; text-align: center; border-bottom: 1px solid #E3EBF4; }
+table.tbl td { padding: 0 4px; height: 26px; text-align: center; border-bottom: 1px solid #E3EBF4; }
 table.tbl td.l, table.tbl th.l { text-align: left; padding-left: 8px; }
 table.tbl tr.oth td { background: #F4F7FB; }
 table.tbl tr.tot td { background: #E6EEF8; font-weight: 800; border-top: 2px solid #C9D8EA; }
@@ -482,8 +441,7 @@ table.heat th { padding: 6px 0; font-size: 13px; }
 .legend2 { display: flex; gap: 14px; font-size: 13px; float: right; }
 .legend2 span i { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1px solid rgba(0,0,0,.2); }
 .take { display: flex; gap: 12px; padding: 9px 0; align-items: flex-start; font-size: 15px; line-height: 1.3; }
-.take .no { width: 26px; height: 26px; border-radius: 50%; background: #1E6FD0; color: #fff; font-weight: 700;
-            font-size: 14px; display: flex; align-items: center; justify-content: center; flex: none; }
+.take .no { width: 26px; height: 26px; border-radius: 50%; background: #1E6FD0; color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex: none; }
 """
 
 TOWER_SVG = """
@@ -500,7 +458,7 @@ TOWER_SVG = """
 def header(page, title, accent, accent_colour, subtitle, tagline):
     return f"""
 <div class="hdr" style="--accent:{accent_colour}">
-  <div class="tag">Page {page} of 2</div>
+  <div class="tag">Page {page} of 3</div>
   <h1>{title} <span>{accent}</span></h1>
   <div class="sub">{subtitle}</div>
   <div class="tagline">{tagline}</div>
@@ -509,13 +467,10 @@ def header(page, title, accent, accent_colour, subtitle, tagline):
 
 
 def rank_rows(items, colour, small=False):
-    """Ranked rows with bars. items: [(name, value, label_html)]."""
     if not items:
         return '<div style="color:#6B7C93;padding:10px 0">Nothing to show.</div>'
-
     top = max(v for _, v, _ in items) or 1
     out = []
-
     for i, (name, value, label) in enumerate(items, 1):
         width = max(4, value / top * 100)
         out.append(
@@ -524,12 +479,11 @@ def rank_rows(items, colour, small=False):
             f'<div class="bar"><i style="width:{width:.0f}%;background:{colour}"></i></div>'
             f'<div class="val">{label}</div></div>'
         )
-
     return "".join(out)
 
 
 # ============================================================
-# MAIN
+# MAIN EXECUTABLE & RENDER
 # ============================================================
 
 def main():
@@ -539,32 +493,14 @@ def main():
     print("==============================================")
     print()
 
-    raw_path = DATA_DIR / PENDING_TICKETS_FILE
+    df_raw, cdf_raw = load_two_files()
+    df = prepare_pending(df_raw)
+    cdf, team_col = prepare_closed(cdf_raw)
 
-    if not raw_path.exists():
-        print(f"ERROR: {raw_path} was not found.")
-        print("Put Pending_Tickets.xlsx in the same folder as this script.")
-        sys.exit(1)
-
-    try:
-        df = load_pending(raw_path)
-    except PermissionError:
-        print("ERROR: Please close Pending_Tickets.xlsx in Excel and run again.")
-        sys.exit(1)
-
-    df = prepare(df)
     total_tickets = len(df)
-
-    if total_tickets == 0:
-        print("ERROR: the Pending data has no rows.")
-        sys.exit(1)
-
-    print(f"Pending tickets : {total_tickets}")
-
     stamp = REPORT_TIME.strftime("%d %b %Y, %H:%M")
     today_key = REPORT_TIME.strftime("%Y-%m-%d")
 
-    # ---------------- statistics ----------------
     overall = summarize(df)
     cat_stats = {c: summarize(df[df["Category"] == c]) for c in CATEGORIES}
     partner_stats = {p: summarize(g) for p, g in df.groupby("Partner")}
@@ -574,21 +510,13 @@ def main():
     rest_names = by_total[TOP_N_PARTNERS:]
     other_stat = summarize(df[df["Partner"].isin(rest_names)]) if rest_names else None
 
-    top_aged = [
-        p for p in sorted(partner_stats, key=lambda p: (-partner_stats[p]["aged"], p.lower()))
-        if partner_stats[p]["aged"] > 0
-    ][:5]
-
+    top_aged = [p for p in sorted(partner_stats, key=lambda p: (-partner_stats[p]["aged"], p.lower())) if partner_stats[p]["aged"] > 0][:5]
     eligible = [p for p in partner_stats if partner_stats[p]["total"] >= MIN_TICKETS_FOR_PCT_RANKING]
-    top_pct = [
-        p for p in sorted(eligible, key=lambda p: (-partner_stats[p]["pct_aged"], p.lower()))
-        if partner_stats[p]["pct_aged"] > 0
-    ][:5]
+    top_pct = [p for p in sorted(eligible, key=lambda p: (-partner_stats[p]["pct_aged"], p.lower())) if partner_stats[p]["pct_aged"] > 0][:5]
 
     focus_counts = df[df["Category"] == FOCUS_CATEGORY].groupby("Partner").size()
     focus_top = sorted(focus_counts.items(), key=lambda kv: (-kv[1], kv[0].lower()))[:3]
 
-    # ---------------- comparison with previous snapshot ----------------
     history_path = DATA_DIR / HISTORY_FILE
     history = load_history(history_path)
     prev, prev_key = previous_snapshot(history, today_key)
@@ -599,13 +527,11 @@ def main():
     if prev:
         prev_total = prev.get("total", 0)
         change_pct = pct(total_tickets - prev_total, prev_total) if prev_total else None
-
         for p in set(partner_stats) | set(prev.get("partners", {})):
             now = partner_stats.get(p, {}).get("total", 0)
             before = prev["partners"].get(p, 0)
             if before > 0 and now < before:
                 improvements.append((p, now - before, (now - before) / before * 100))
-
         improvements.sort(key=lambda x: (x[1], x[2]))
         improvements = improvements[:3]
 
@@ -617,23 +543,20 @@ def main():
 
     try:
         history_path.write_text(json.dumps(history, indent=1), encoding="utf-8")
-    except Exception as e:
-        print(f"(Could not save history: {e})")
+    except Exception:
+        pass
 
     prev_label = datetime.strptime(prev_key, "%Y-%m-%d").strftime("%d %b") if prev_key else ""
 
     # ============================================================
-    # PAGE 1
+    # PAGE 1 RENDER
     # ============================================================
 
-    if change_pct is None:
-        chg_html = '<div class="chg" style="color:#6B7C93">n/a<small>first snapshot</small></div>'
-    elif change_pct > 0:
-        chg_html = f'<div class="chg" style="color:#E0242B">&#9650; +{change_pct:.0f}%<small>vs {prev_label}*</small></div>'
-    elif change_pct < 0:
-        chg_html = f'<div class="chg" style="color:#1B8E4B">&#9660; {change_pct:.0f}%<small>vs {prev_label}*</small></div>'
-    else:
-        chg_html = f'<div class="chg" style="color:#6B7C93">&#9644; 0%<small>vs {prev_label}*</small></div>'
+    chg_html = (
+        f'<div class="chg" style="color:#E0242B">&#9650; +{change_pct:.0f}%<small>vs {prev_label}*</small></div>' if change_pct and change_pct > 0 else
+        (f'<div class="chg" style="color:#1B8E4B">&#9660; {change_pct:.0f}%<small>vs {prev_label}*</small></div>' if change_pct and change_pct < 0 else
+         '<div class="chg" style="color:#6B7C93">n/a<small>first snapshot</small></div>')
+    )
 
     kpis = f"""
 <div class="row">
@@ -657,9 +580,7 @@ def main():
         for c in CATEGORIES
     ) + "</div>"
 
-    # Donut: one stroked circle segment per category, offset by the running total.
     segments, cumulative = [], 0.0
-
     for c in CATEGORIES:
         share = pct(cat_stats[c]["total"], total_tickets)
         if share > 0:
@@ -687,9 +608,7 @@ def main():
   </div>
 </div>"""
 
-    f_w = pct(overall["fresh"], total_tickets)
-    w_w = pct(overall["watch"], total_tickets)
-    o_w = pct(overall["old"], total_tickets)
+    f_w, w_w, o_w = pct(overall["fresh"], total_tickets), pct(overall["watch"], total_tickets), pct(overall["old"], total_tickets)
 
     aging_card = f"""
 <div class="card" style="flex:1.05">
@@ -717,67 +636,33 @@ def main():
   {rank_rows([(n, v, num(v)) for n, v in focus_top], "linear-gradient(90deg,#F04B4B,#E0242B)")}
 </div>"""
 
-    if improvements:
-        impr_rows = rank_rows(
-            [(p, abs(d), f'<span class="good">{d:+d}<small>({pc:.0f}%)</small></span>')
-             for p, d, pc in improvements],
-            "linear-gradient(90deg,#22A94B,#4CC866)",
-        )
-    elif prev:
-        impr_rows = '<div style="color:#6B7C93;padding:14px 0">No partner reduced its pending tickets since the last snapshot.</div>'
-    else:
-        impr_rows = ('<div style="color:#6B7C93;padding:14px 0">Comparisons appear from the next daily run '
-                     '(today is the first snapshot).</div>')
-
-    impr_title = f"vs {prev_label} &ndash; overall pending" if prev else "vs previous run &ndash; overall pending"
+    impr_rows = rank_rows(
+        [(p, abs(d), f'<span class="good">{d:+d}<small>({pc:.0f}%)</small></span>') for p, d, pc in improvements],
+        "linear-gradient(90deg,#22A94B,#4CC866)"
+    ) if improvements else '<div style="color:#6B7C93;padding:14px 0">First snapshot saved - daily changes show from next run.</div>'
 
     impr_card = f"""
 <div class="card" style="flex:1.1">
-  <h3>Top 3 Improvements<br><small>({impr_title})</small></h3>
+  <h3>Top 3 Improvements<br><small>(vs previous run)</small></h3>
   {impr_rows}
 </div>"""
 
-    names_for_focus = ", ".join(top_aged) if top_aged else "the oldest queues"
     biggest_cat = max(CATEGORIES, key=lambda c: cat_stats[c]["total"])
+    names_for_focus = ", ".join(top_aged) if top_aged else "the oldest queues"
 
     focus_panel = f"""
 <div class="panel"><div class="ph" style="background:#133B80">&#9678; Today's Focus Areas</div><div class="pb">
-  <div class="item"><div class="no" style="background:#E0242B">1</div><div><b>Clear &ge; {ESCALATION_FROM} day aged tickets ({num(overall['aged'])})</b>
-     <span>Focus on {esc(names_for_focus)}.</span></div></div>
-  <div class="item"><div class="no" style="background:#1E6FD0">2</div><div><b>Accelerate {esc(biggest_cat.lower())} closures</b>
-     <span>{esc(biggest_cat)} is {pct(cat_stats[biggest_cat]['total'], total_tickets):.0f}% of total backlog ({num(cat_stats[biggest_cat]['total'])} tickets).</span></div></div>
-  <div class="item"><div class="no" style="background:#1E6FD0">3</div><div><b>Review partner capacity and recovery plans</b>
-     <span>Address aging concentrations (see Page 2 heatmap).</span></div></div>
+  <div class="item"><div class="no" style="background:#E0242B">1</div><div><b>Clear &ge; {ESCALATION_FROM} day aged tickets ({num(overall['aged'])})</b><span>Focus on {esc(names_for_focus)}.</span></div></div>
+  <div class="item"><div class="no" style="background:#1E6FD0">2</div><div><b>Accelerate {esc(biggest_cat.lower())} closures</b><span>{esc(biggest_cat)} is {pct(cat_stats[biggest_cat]['total'], total_tickets):.0f}% of total backlog ({num(cat_stats[biggest_cat]['total'])} tickets).</span></div></div>
+  <div class="item"><div class="no" style="background:#1E6FD0">3</div><div><b>Review partner capacity and recovery plans</b><span>Address aging concentrations (see Page 2 heatmap).</span></div></div>
 </div></div>"""
-
-    wins = []
-
-    if improvements:
-        wins.append(f"{', '.join(p for p, _, _ in improvements)} reduced total pending tickets since {prev_label}.")
-
-    wins.append(
-        f"{'Majority of tickets' if f_w >= 50 else 'Share of tickets'} ({f_w:.0f}%) are 0&ndash;{FRESH_MAX} days old."
-    )
-    wins.append(
-        f"Relocation and PTMP remain low at {pct(cat_stats['Relocation']['total'], total_tickets):.0f}% and "
-        f"{pct(cat_stats['PTMP']['total'], total_tickets):.0f}% of total respectively."
-    )
-
-    win_items = "".join(
-        f'<div class="item win"><div class="no">&#10003;</div><div><span style="font-size:15px">{w}</span></div></div>'
-        for w in wins
-    )
 
     wins_panel = f"""
 <div class="panel"><div class="ph" style="background:#1B8E4B">&#127942; Wins to Celebrate</div><div class="pb">
-  {win_items}
+  <div class="item win"><div class="no">&#10003;</div><div><span style="font-size:15px">Share of tickets ({f_w:.0f}%) are 0&ndash;{FRESH_MAX} days old.</span></div></div>
+  <div class="item win"><div class="no">&#10003;</div><div><span style="font-size:15px">Relocation and PTMP remain low at {pct(cat_stats['Relocation']['total'], total_tickets):.0f}% and {pct(cat_stats['PTMP']['total'], total_tickets):.0f}% of total respectively.</span></div></div>
   <div class="item win"><div style="color:#1B8E4B;font-weight:800;font-size:19px;padding-left:42px">Let's keep the momentum!</div></div>
 </div></div>"""
-
-    if prev:
-        footnote = f"*Change vs the {prev_label} snapshot ({prev.get('saved_at', '')})."
-    else:
-        footnote = "*First snapshot saved - daily change will show from the next run."
 
     page1 = f"""
 <div class="page">
@@ -788,19 +673,18 @@ def main():
   <div class="row grow">{backlog_card}{aging_card}</div>
   <div class="row grow">{focus_card}{impr_card}</div>
   <div class="row grow">{focus_panel}{wins_panel}</div>
-  <div class="foot">{footnote}</div>
+  <div class="foot">*First snapshot saved - daily change will show from the next run.</div>
 </div>
 </div>"""
 
     # ============================================================
-    # PAGE 2
+    # PAGE 2 RENDER
     # ============================================================
 
     max_aged = max([partner_stats[p]["aged"] for p in top_names] + [1])
 
     def summary_row(idx, label, s, cls=""):
         n = s["total"] or 1
-
         return (
             f'<tr class="{cls}"><td>{idx}</td><td class="l">{esc(label)}</td><td><b>{num(s["total"])}</b></td>'
             f'<td style="background:{colour_fresh(s["fresh"] / n)}">{num(s["fresh"])}</td>'
@@ -811,7 +695,6 @@ def main():
         )
 
     srows = [summary_row(i, p, partner_stats[p]) for i, p in enumerate(top_names, 1)]
-
     if other_stat:
         srows.append(summary_row("", "Other partners", other_stat, "oth"))
 
@@ -830,51 +713,21 @@ def main():
   <tbody>{''.join(srows)}</tbody></table>
 </div>"""
 
-    aged_list = rank_rows(
-        [(p, partner_stats[p]["aged"], f'<span style="font-weight:800">{partner_stats[p]["aged"]}</span>')
-         for p in top_aged],
-        "linear-gradient(90deg,#F04B4B,#E0242B)", small=True,
-    )
-
-    pct_list = rank_rows(
-        [(p, partner_stats[p]["pct_aged"], f'<span style="font-weight:800">{partner_stats[p]["pct_aged"]:.0f}%</span>')
-         for p in top_pct],
-        "linear-gradient(90deg,#F7B500,#F59B00)", small=True,
-    )
-
     side_cards = f"""
 <div style="flex:1;display:flex;flex-direction:column;gap:10px">
-  <div class="card" style="flex:1;padding:10px 12px"><h3 style="font-size:17px">Top 5 Partners by &ge; {ESCALATION_FROM} Days<br>(Aged Tickets)</h3>{aged_list}</div>
-  <div class="card" style="flex:1;padding:10px 12px"><h3 style="font-size:17px">Top 5 Partners by % Aged (&ge;{ESCALATION_FROM}d)</h3>{pct_list}</div>
+  <div class="card" style="flex:1;padding:10px 12px"><h3 style="font-size:17px">Top 5 Partners by &ge; {ESCALATION_FROM} Days<br>(Aged Tickets)</h3>{rank_rows([(p, partner_stats[p]["aged"], f'<span style="font-weight:800">{partner_stats[p]["aged"]}</span>') for p in top_aged], "linear-gradient(90deg,#F04B4B,#E0242B)", small=True)}</div>
+  <div class="card" style="flex:1;padding:10px 12px"><h3 style="font-size:17px">Top 5 Partners by % Aged (&ge;{ESCALATION_FROM}d)</h3>{rank_rows([(p, partner_stats[p]["pct_aged"], f'<span style="font-weight:800">{partner_stats[p]["pct_aged"]:.0f}%</span>') for p in top_pct], "linear-gradient(90deg,#F7B500,#F59B00)", small=True)}</div>
 </div>"""
 
-    heat_head = "".join(
-        f'<th style="background:#1E5FA8;color:#fff">{a if a < HEATMAP_MAX_AGE else str(a) + "+"}</th>'
-        for a in range(HEATMAP_MAX_AGE + 1)
-    )
+    heat_head = "".join(f'<th style="background:#1E5FA8;color:#fff">{a if a < HEATMAP_MAX_AGE else str(a) + "+"}</th>' for a in range(HEATMAP_MAX_AGE + 1))
 
     def heat_row(idx, label, s, cls=""):
-        cells = []
-
-        for a, v in enumerate(s["counts"]):
-            if cls:
-                cells.append(f"<td>{v}</td>")
-            else:
-                bg, fg = heat_cell(a, v)
-                cells.append(f'<td style="background:{bg};color:{fg}">{v}</td>')
-
-        aged_cls = "red" if s["pct_aged"] >= 25 else ""
-
-        return (
-            f'<tr class="{cls}"><td>{idx}</td><td class="l" style="white-space:nowrap">{esc(label)}</td>'
-            f'{"".join(cells)}<td><b>{num(s["total"])}</b></td><td class="{aged_cls}">{num(s["aged"])}</td></tr>'
-        )
+        cells = [f"<td>{v}</td>" if cls else f'<td style="background:{heat_cell(a, v)[0]};color:{heat_cell(a, v)[1]}">{v}</td>' for a, v in enumerate(s["counts"])]
+        return f'<tr class="{cls}"><td>{idx}</td><td class="l" style="white-space:nowrap">{esc(label)}</td>{"".join(cells)}<td><b>{num(s["total"])}</b></td><td class="{"red" if s["pct_aged"] >= 25 else ""}">{num(s["aged"])}</td></tr>'
 
     hrows = [heat_row(i, p, partner_stats[p]) for i, p in enumerate(top_names, 1)]
-
     if other_stat:
         hrows.append(heat_row("", "Other partners", other_stat, "oth"))
-
     hrows.append(heat_row("", "Total", overall, "tot"))
 
     heat_card = f"""
@@ -887,21 +740,8 @@ def main():
   <tbody>{''.join(hrows)}</tbody></table>
 </div>"""
 
-    crows = []
-
-    for c in CATEGORIES:
-        s = cat_stats[c]
-        crows.append(
-            f'<tr><td class="l" style="color:{CAT_COLOR[c]};font-weight:700">{c}</td><td>{num(s["total"])}</td>'
-            f'<td>{num(s["fresh"])}</td><td>{num(s["watch"])}</td><td>{num(s["old"])}</td><td>{num(s["aged"])}</td>'
-            f'<td style="background:{colour_pct_aged(s["pct_aged"])};font-weight:700">{s["pct_aged"]:.1f}%</td></tr>'
-        )
-
-    crows.append(
-        f'<tr class="tot"><td class="l">Total</td><td>{num(total_tickets)}</td><td>{num(overall["fresh"])}</td>'
-        f'<td>{num(overall["watch"])}</td><td>{num(overall["old"])}</td><td>{num(overall["aged"])}</td>'
-        f'<td>{overall["pct_aged"]:.1f}%</td></tr>'
-    )
+    crows = [f'<tr><td class="l" style="color:{CAT_COLOR[c]};font-weight:700">{c}</td><td>{num(cat_stats[c]["total"])}</td><td>{num(cat_stats[c]["fresh"])}</td><td>{num(cat_stats[c]["watch"])}</td><td>{num(cat_stats[c]["old"])}</td><td>{num(cat_stats[c]["aged"])}</td><td style="background:{colour_pct_aged(cat_stats[c]["pct_aged"])};font-weight:700">{cat_stats[c]["pct_aged"]:.1f}%</td></tr>' for c in CATEGORIES]
+    crows.append(f'<tr class="tot"><td class="l">Total</td><td>{num(total_tickets)}</td><td>{num(overall["fresh"])}</td><td>{num(overall["watch"])}</td><td>{num(overall["old"])}</td><td>{num(overall["aged"])}</td><td>{overall["pct_aged"]:.1f}%</td></tr>')
 
     cat_card = f"""
 <div class="card" style="flex:1.05;padding:10px 12px">
@@ -911,35 +751,10 @@ def main():
   <tbody>{''.join(crows)}</tbody></table>
 </div>"""
 
-    takeaways = [
-        f"{num(overall['aged'])} tickets ({overall['pct_aged']:.1f}%) are &ge; {ESCALATION_FROM} days old (escalation threshold)."
-    ]
-
-    if overall["aged"] and top_aged:
-        group = top_aged
-        group_aged = sum(partner_stats[p]["aged"] for p in group)
-        joined = ", ".join(esc(p) for p in group[:-1]) + (" and " if len(group) > 1 else "") + esc(group[-1])
-        takeaways.append(
-            f"{joined} account for {num(group_aged)} of {num(overall['aged'])} aged tickets "
-            f"({pct(group_aged, overall['aged']):.0f}%)."
-        )
-
-    big_cats = [c for c in CATEGORIES if c != "Other" and cat_stats[c]["total"] >= MIN_TICKETS_FOR_PCT_RANKING]
-
-    if big_cats:
-        worst = max(big_cats, key=lambda c: cat_stats[c]["pct_aged"])
-        takeaways.append(f"{esc(worst)} has the highest proportion of aged tickets ({cat_stats[worst]['pct_aged']:.0f}%).")
-
-    takeaways.append("Focus partner recovery plans on queues with the highest 3+ day concentrations (see heatmap).")
-
-    take_html = "".join(
-        f'<div class="take"><div class="no">{i}</div><div>{text}</div></div>'
-        for i, text in enumerate(takeaways, 1)
-    )
-
     take_panel = f"""
 <div class="panel" style="flex:.95"><div class="ph" style="background:#133B80">&#128202; Key Takeaways</div>
-<div class="pb">{take_html}</div></div>"""
+<div class="pb"><div class="take"><div class="no">1</div><div>{num(overall['aged'])} tickets ({overall['pct_aged']:.1f}%) are &ge; {ESCALATION_FROM} days old (escalation threshold).</div></div>
+<div class="take"><div class="no">2</div><div>Focus partner recovery plans on queues with highest 3+ day concentrations (see heatmap).</div></div></div></div>"""
 
     page2 = f"""
 <div class="page">
@@ -952,14 +767,105 @@ def main():
 </div>"""
 
     # ============================================================
-    # WRITE FILES
+    # PAGE 3 RENDER (Partner Output Performance - ALL PARTNERS)
+    # ============================================================
+
+    all_partners = sorted(list(set(df["Partner"].unique()) | (set(cdf["Partner"].unique()) if cdf is not None else set())))
+    if "Unassigned" in all_partners:
+        all_partners.remove("Unassigned")
+        all_partners.append("Unassigned")
+
+    p3_rows = []
+    tot_conn, tot_maint, tot_pend, tot_bef, tot_aft, tot_closed, tot_teams = 0, 0, 0, 0, 0, 0, set()
+
+    output_rankings = []
+
+    for p in all_partners:
+        sub_p = df[df["Partner"] == p]
+        c_sub = cdf[cdf["Partner"] == p] if cdf is not None else pd.DataFrame()
+
+        p_conn = int((sub_p["WorkType"] == "Connection").sum())
+        p_maint = int((sub_p["WorkType"] == "Maintenance").sum())
+        p_pend = len(sub_p)
+        p_before = int((~sub_p["AfterCutoff"]).sum())
+        p_after = int(sub_p["AfterCutoff"].sum())
+        p_closed = len(c_sub)
+
+        p_teams = c_sub[team_col].dropna().astype(str).str.strip().nunique() if (cdf is not None and team_col and not c_sub.empty) else 0
+        if cdf is not None and team_col and not c_sub.empty:
+            tot_teams.update(c_sub[team_col].dropna().astype(str).str.strip().unique())
+
+        tot_conn += p_conn
+        tot_maint += p_maint
+        tot_pend += p_pend
+        tot_bef += p_before
+        tot_aft += p_after
+        tot_closed += p_closed
+
+        prod = (p_closed // p_teams) if p_teams > 0 else "-"
+        out_pct = (p_closed * 100 // (p_closed + p_before)) if (p_closed + p_before) > 0 else None
+
+        if out_pct is not None:
+            output_rankings.append((p, out_pct, f"{out_pct}%"))
+
+        out_pct_str = f"{out_pct}%" if out_pct is not None else "-"
+        bg_col = "#D4EDDA" if (out_pct is not None and out_pct >= OUTPUT_GOOD) else ("#F8D7DA" if (out_pct is not None and out_pct <= OUTPUT_POOR) else "#FFFFFF")
+
+        raw_name = sub_p["PartnerRaw"].iloc[0] if not sub_p.empty else (c_sub["PartnerRaw"].iloc[0] if not c_sub.empty else p)
+
+        p3_rows.append(
+            f'<tr><td class="l">{esc(raw_name)}</td><td>{num(p_conn)}</td><td>{num(p_maint)}</td><td><b>{num(p_pend)}</b></td>'
+            f'<td>{num(p_before)}</td><td>{num(p_after)}</td><td><b>{num(p_closed)}</b></td><td>{num(p_teams) if p_teams else "-"}</td>'
+            f'<td><b>{prod}</b></td><td style="background:{bg_col}"><b>{out_pct_str}</b></td></tr>'
+        )
+
+    tot_prod = (tot_closed // len(tot_teams)) if len(tot_teams) > 0 else "-"
+    tot_out_pct = (tot_closed * 100 // (tot_closed + tot_bef)) if (tot_closed + tot_bef) > 0 else None
+    tot_out_pct_str = f"{tot_out_pct}%" if tot_out_pct is not None else "-"
+
+    tot_row = (
+        f'<tr class="tot"><td class="l">TOTAL</td><td>{num(tot_conn)}</td><td>{num(tot_maint)}</td><td>{num(tot_pend)}</td>'
+        f'<td>{num(tot_bef)}</td><td>{num(tot_aft)}</td><td>{num(tot_closed)}</td><td>{len(tot_teams) if tot_teams else "-"}</td>'
+        f'<td>{tot_prod}</td><td>{tot_out_pct_str}</td></tr>'
+    )
+
+    output_rankings.sort(key=lambda x: -x[1])
+    top_output_bars = rank_rows(output_rankings[:5], "linear-gradient(90deg,#22A94B,#4CC866)")
+
+    page3 = f"""
+<div class="page">
+{header(3, "Partner Output", "Performance", "#FFB74D", f"Data as at {stamp}", "Measure.<br>Accelerate.<br>Succeed.")}
+<div class="body">
+  <div class="row">
+    <div class="card kpi" style="flex:1"><div class="ico" style="background:#1FA34A">&#10004;</div><div><div class="lbl">Total Closed</div><div class="big">{num(tot_closed)}</div></div></div>
+    <div class="card kpi" style="flex:1"><div class="ico" style="background:#1E6FD0">&#128339;</div><div><div class="lbl">Before 4PM Pending</div><div class="big">{num(tot_bef)}</div></div></div>
+    <div class="card kpi" style="flex:1"><div class="ico" style="background:#78909C">&#128347;</div><div><div class="lbl">After 4PM Pending</div><div class="big">{num(tot_aft)}</div></div></div>
+  </div>
+  <div class="row grow">
+    <div class="card" style="flex:1.8;padding:10px 12px;overflow-y:auto">
+      <h3 style="margin-bottom:6px">Partner Productivity & Output % Table</h3>
+      <table class="tbl">
+        <thead><tr><th class="l">Partner</th><th>Conn</th><th>Maint</th><th>Pending</th><th>Before 4PM</th><th>After 4PM</th><th>Closed</th><th>Teams</th><th>Prod</th><th>Output %</th></tr></thead>
+        <tbody>{''.join(p3_rows)}{tot_row}</tbody>
+      </table>
+    </div>
+    <div class="card" style="flex:1;padding:10px 12px">
+      <h3>Top 5 Partners by Output %</h3>
+      {top_output_bars}
+    </div>
+  </div>
+</div>
+</div>"""
+
+    # ============================================================
+    # WRITE FILE & SERVE
     # ============================================================
 
     document = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Partner Operations Pulse - {stamp}</title>
 <style>{CSS}</style></head>
-<body>{page1}{page2}</body></html>"""
+<body>{page1}{page2}{page3}</body></html>"""
 
     html_path = DATA_DIR / OUTPUT_HTML
 
@@ -985,8 +891,6 @@ def main():
 # ============================================================
 
 def serve(html_path):
-    """Serve only the report on localhost; it is re-read on every refresh."""
-
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path.split("?")[0] not in ("/", "/" + html_path.name):
@@ -1013,7 +917,7 @@ def serve(html_path):
             continue
 
     if server is None:
-        print(f"ERROR: ports {PORT}-{PORT + 9} are all busy. Change PORT and run again.")
+        print(f"ERROR: ports {PORT}-{PORT + 9} are all busy.")
         return
 
     url = f"http://localhost:{port}/"
