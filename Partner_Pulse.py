@@ -6,10 +6,12 @@ Reads TWO separate Excel files:
   2. Closed_Tickets.xlsx  (Completed / Closed tickets)
 
 Generates index.html with:
+  - Responsive screen layout matching device screen width
+  - Strict fixed 3-page poster structure reserved for PDF/Print
   - Page 1: Daily Partner Operations Pulse (includes Closed & 4PM Cutoff KPIs)
   - Page 2: Partner Aging & Accountability Heatmap
   - Page 3: Partner Output Performance & Productivity
-            - Strictly excludes "Adrian" and "Unassigned"
+            - Substring filter strictly excludes "Adrian" and "Unassigned"
             - Sorted descending by Output % (Highest to Lowest)
             - Output % >= 70% highlighted green
 
@@ -56,8 +58,8 @@ CUTOFF_HOUR = 16                  # 4:00 PM cut-off
 OUTPUT_GOOD = 70                  # Output % >= 70% -> Green
 OUTPUT_POOR = 40                  # Output % <= 40% -> Red
 
-# Explicit list of partners/entities to exclude from Page 3 Performance
-EXCLUDE_PARTNERS = ["Adrian", "Unassigned"]
+# Explicit list of partner substrings to exclude from Page 3 Performance Table
+EXCLUDE_PARTNERS = ["adrian", "unassigned"]
 
 SERVE = True                      # Launch local http server
 PORT = 8000
@@ -356,14 +358,38 @@ def previous_snapshot(history, today_key):
 CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-@page { size: 1000px 1333px; margin: 0; }
-body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif; color: #12233F; }
-.page { width: 1000px; height: 1333px; margin: 24px auto; background: #EDF3FA; overflow: hidden;
-        position: relative; display: flex; flex-direction: column; box-shadow: 0 6px 24px rgba(10,30,60,.18); }
+body { 
+  background: #DDE5EE; 
+  font-family: "Segoe UI", Calibri, Arial, sans-serif; 
+  color: #12233F; 
+  padding: 12px;
+}
+.page { 
+  width: 100%; 
+  max-width: 1000px; 
+  margin: 0 auto 24px auto; 
+  background: #EDF3FA; 
+  position: relative; 
+  display: flex; 
+  flex-direction: column; 
+  box-shadow: 0 6px 24px rgba(10,30,60,.18); 
+  border-radius: 8px;
+  overflow: hidden;
+}
 @media print {
-  body { background: #fff; }
-  .page { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
+  @page { size: 1000px 1333px; margin: 0; }
+  body { background: #fff; padding: 0; }
+  .page { 
+    width: 1000px; 
+    height: 1333px; 
+    margin: 0; 
+    box-shadow: none; 
+    page-break-after: always; 
+    break-after: page; 
+    border-radius: 0;
+  }
   .page:last-child { page-break-after: auto; break-after: auto; }
+  .row { flex-wrap: nowrap !important; }
 }
 .hdr { height: 128px; background: linear-gradient(100deg, #0A2A5E 0%, #123F82 60%, #1B5DA8 100%);
        color: #fff; position: relative; padding: 24px 30px 0 40px; flex: none; overflow: hidden; }
@@ -375,9 +401,9 @@ body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif;
 .hdr .tagline { position: absolute; right: 92px; top: 52px; font-size: 14px; line-height: 1.35; max-width: 210px; }
 .hdr svg.tower { position: absolute; right: 8px; top: 8px; height: 118px; opacity: .85; }
 .body { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
-.row { display: flex; gap: 10px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row.grow { flex: 1; }
-.card { background: #fff; border: 1px solid #D5E1EF; border-radius: 12px; padding: 12px 16px; }
+.card { background: #fff; border: 1px solid #D5E1EF; border-radius: 12px; padding: 12px 16px; min-width: 280px; flex: 1; }
 .card h3 { font-size: 20px; font-weight: 700; color: #12233F; }
 .card h3 small { font-size: 16px; font-weight: 400; color: #4B5E78; }
 .kpi { display: flex; align-items: center; gap: 14px; height: 124px; }
@@ -390,13 +416,13 @@ body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif;
 .kpi.alert .lbl, .kpi.alert .big { color: #E0242B; }
 .kpi.alert .ico { background: #E0242B; }
 .kpi .pctof { font-size: 16px; font-weight: 700; color: #E0242B; margin-top: 6px; }
-.tiles { display: flex; gap: 8px; }
-.tile { flex: 1; border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid #D5E1EF; text-align: center; }
+.tiles { display: flex; gap: 8px; flex-wrap: wrap; }
+.tile { flex: 1; min-width: 130px; border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid #D5E1EF; text-align: center; }
 .tile .top { color: #fff; padding: 8px 0 4px; font-weight: 700; font-size: 15px; }
 .tile .top i { display: block; font-style: normal; font-size: 22px; margin-bottom: 2px; }
 .tile .n { font-size: 32px; font-weight: 800; padding-top: 6px; }
 .tile .p { font-size: 14px; color: #4B5E78; padding-bottom: 8px; }
-.donut-wrap { display: flex; align-items: center; gap: 18px; margin-top: 6px; }
+.donut-wrap { display: flex; align-items: center; gap: 18px; margin-top: 6px; flex-wrap: wrap; }
 .donut { position: relative; width: 190px; height: 190px; flex: none; }
 .donut svg { width: 100%; height: 100%; transform: rotate(0deg); }
 .donut .mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
@@ -425,7 +451,7 @@ body { background: #DDE5EE; font-family: "Segoe UI", Calibri, Arial, sans-serif;
 .rank.sm .bdg { width: 21px; height: 21px; font-size: 12px; }
 .good { color: #1B8E4B; font-weight: 800; }
 .good small { font-weight: 600; margin-left: 6px; }
-.panel { border-radius: 12px; overflow: hidden; background: #fff; border: 1px solid #D5E1EF; flex: 1; }
+.panel { border-radius: 12px; overflow: hidden; background: #fff; border: 1px solid #D5E1EF; flex: 1; min-width: 280px; }
 .panel .ph { color: #fff; font-size: 21px; font-weight: 700; padding: 11px 16px; display: flex; align-items: center; gap: 10px; }
 .panel .pb { padding: 6px 16px 10px; }
 .item { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
@@ -786,15 +812,15 @@ def main():
 </div>"""
 
     # ============================================================
-    # PAGE 3 RENDER (Partner Output Performance - STRICTLY EXCLUDES "Adrian" & "Unassigned")
+    # PAGE 3 RENDER (Partner Output Performance - STRICT SUBSTRING FILTER FOR Adrian & Unassigned)
     # ============================================================
 
     all_partners = set(df["Partner"].unique()) | (set(cdf["Partner"].unique()) if cdf is not None else set())
 
-    # Exclude unwanted entities regardless of letter casing
+    # Substring match to filter out any variant containing "adrian" or "unassigned"
     p3_partners = [
         p for p in all_partners 
-        if p not in EXCLUDE_PARTNERS and p.lower() not in [e.lower() for e in EXCLUDE_PARTNERS]
+        if not any(ex in str(p).lower() for ex in EXCLUDE_PARTNERS)
     ]
 
     partner_records = []
@@ -911,6 +937,7 @@ def main():
 
     document = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Partner Operations Pulse - {stamp}</title>
 <style>{CSS}</style></head>
 <body>{page1}{page2}{page3}</body></html>"""
