@@ -2,7 +2,7 @@
 Partner Operations Pulse - 2-page dashboard built from pending tickets.
 
 Reads Pending_Tickets.xlsx (next to this script), writes
-Partner_Operations_Pulse.html and serves it on your own machine.
+index.html and serves it on your own machine.
 Run the script, then click the http://localhost link it prints.
 
 Requires: pip install pandas openpyxl
@@ -27,7 +27,7 @@ import pandas as pd
 DATA_DIR = Path(__file__).resolve().parent
 
 PENDING_TICKETS_FILE = "Pending_Tickets.xlsx"
-OUTPUT_HTML = "Partner_Operations_Pulse.html"
+OUTPUT_HTML = "index.html"
 
 # Daily totals are stored here so "vs yesterday" can be calculated.
 HISTORY_FILE = "pending_history.json"
