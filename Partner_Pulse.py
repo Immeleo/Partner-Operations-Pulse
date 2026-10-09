@@ -8,7 +8,10 @@ Reads TWO separate Excel files:
 Generates index.html with:
   - Page 1: Daily Partner Operations Pulse (includes Closed & 4PM Cutoff KPIs)
   - Page 2: Partner Aging & Accountability Heatmap
-  - Page 3: Partner Output Performance & Productivity (Excludes 'Adrian' & 'Unassigned')
+  - Page 3: Partner Output Performance & Productivity
+            - Strictly excludes "Adrian" and "Unassigned"
+            - Sorted descending by Output % (Highest to Lowest)
+            - Output % >= 70% highlighted green
 
 Requires: pip install pandas openpyxl
 """
@@ -53,7 +56,7 @@ CUTOFF_HOUR = 16                  # 4:00 PM cut-off
 OUTPUT_GOOD = 70                  # Output % >= 70% -> Green
 OUTPUT_POOR = 40                  # Output % <= 40% -> Red
 
-# Partners / Assignment Groups to exclude from Page 3 Performance Table
+# Explicit list of partners/entities to exclude from Page 3 Performance
 EXCLUDE_PARTNERS = ["Adrian", "Unassigned"]
 
 SERVE = True                      # Launch local http server
@@ -783,18 +786,19 @@ def main():
 </div>"""
 
     # ============================================================
-    # PAGE 3 RENDER (Partner Output Performance - EXCLUDES Adrian & Unassigned)
+    # PAGE 3 RENDER (Partner Output Performance - STRICTLY EXCLUDES "Adrian" & "Unassigned")
     # ============================================================
 
-    all_partners = sorted(list(set(df["Partner"].unique()) | (set(cdf["Partner"].unique()) if cdf is not None else set())))
+    all_partners = set(df["Partner"].unique()) | (set(cdf["Partner"].unique()) if cdf is not None else set())
 
-    # Exclude unwanted partners/unassigned from Page 3
-    p3_partners = [p for p in all_partners if p not in EXCLUDE_PARTNERS and p.lower() not in [e.lower() for e in EXCLUDE_PARTNERS]]
+    # Exclude unwanted entities regardless of letter casing
+    p3_partners = [
+        p for p in all_partners 
+        if p not in EXCLUDE_PARTNERS and p.lower() not in [e.lower() for e in EXCLUDE_PARTNERS]
+    ]
 
-    p3_rows = []
+    partner_records = []
     tot_conn, tot_maint, tot_pend, tot_bef, tot_aft, tot_closed, tot_teams = 0, 0, 0, 0, 0, 0, set()
-
-    output_rankings = []
 
     for p in p3_partners:
         sub_p = df[df["Partner"] == p]
@@ -821,18 +825,51 @@ def main():
         prod = (p_closed // p_teams) if p_teams > 0 else "-"
         out_pct = (p_closed * 100 // (p_closed + p_before)) if (p_closed + p_before) > 0 else None
 
-        if out_pct is not None:
-            output_rankings.append((p, out_pct, f"{out_pct}%"))
-
-        out_pct_str = f"{out_pct}%" if out_pct is not None else "-"
-        bg_col = "#D4EDDA" if (out_pct is not None and out_pct >= OUTPUT_GOOD) else ("#F8D7DA" if (out_pct is not None and out_pct <= OUTPUT_POOR) else "#FFFFFF")
-
         raw_name = sub_p["PartnerRaw"].iloc[0] if not sub_p.empty else (c_sub["PartnerRaw"].iloc[0] if not c_sub.empty else p)
 
+        partner_records.append({
+            "partner": p,
+            "raw_name": raw_name,
+            "p_conn": p_conn,
+            "p_maint": p_maint,
+            "p_pend": p_pend,
+            "p_before": p_before,
+            "p_after": p_after,
+            "p_closed": p_closed,
+            "p_teams": p_teams,
+            "prod": prod,
+            "out_pct": out_pct,
+        })
+
+    # Sort descending by Output % (None values placed at the very end)
+    partner_records.sort(key=lambda x: (x["out_pct"] is not None, x["out_pct"] if x["out_pct"] is not None else -1), reverse=True)
+
+    p3_rows = []
+    output_rankings = []
+
+    for rec in partner_records:
+        out_pct = rec["out_pct"]
+        out_pct_str = f"{out_pct}%" if out_pct is not None else "-"
+
+        # Highlight green for Output >= 70%
+        if out_pct is not None and out_pct >= OUTPUT_GOOD:
+            bg_col = "background:#28A745;color:#FFFFFF;"  # Solid Green
+        elif out_pct is not None and out_pct <= OUTPUT_POOR:
+            bg_col = "background:#F8D7DA;color:#721C24;"  # Soft Red
+        else:
+            bg_col = "background:#FFFFFF;"
+
+        if out_pct is not None:
+            output_rankings.append((rec["partner"], out_pct, f"{out_pct}%"))
+
         p3_rows.append(
-            f'<tr><td class="l">{esc(raw_name)}</td><td>{num(p_conn)}</td><td>{num(p_maint)}</td><td><b>{num(p_pend)}</b></td>'
-            f'<td>{num(p_before)}</td><td>{num(p_after)}</td><td><b>{num(p_closed)}</b></td><td>{num(p_teams) if p_teams else "-"}</td>'
-            f'<td><b>{prod}</b></td><td style="background:{bg_col}"><b>{out_pct_str}</b></td></tr>'
+            f'<tr><td class="l">{esc(rec["raw_name"])}</td>'
+            f'<td>{num(rec["p_conn"])}</td><td>{num(rec["p_maint"])}</td>'
+            f'<td><b>{num(rec["p_pend"])}</b></td><td>{num(rec["p_before"])}</td>'
+            f'<td>{num(rec["p_after"])}</td><td><b>{num(rec["p_closed"])}</b></td>'
+            f'<td>{num(rec["p_teams"]) if rec["p_teams"] else "-"}</td>'
+            f'<td><b>{rec["prod"]}</b></td>'
+            f'<td style="{bg_col}"><b>{out_pct_str}</b></td></tr>'
         )
 
     tot_prod = (tot_closed // len(tot_teams)) if len(tot_teams) > 0 else "-"
@@ -846,7 +883,7 @@ def main():
     )
 
     output_rankings.sort(key=lambda x: -x[1])
-    top_output_bars = rank_rows(output_rankings[:5], "linear-gradient(90deg,#22A94B,#4CC866)")
+    top_output_bars = rank_rows(output_rankings[:5], "linear-gradient(90deg,#28A745,#4CD964)")
 
     page3 = f"""
 <div class="page">
