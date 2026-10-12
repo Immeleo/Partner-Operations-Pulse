@@ -24,7 +24,7 @@ import math
 import re
 import sys
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -41,11 +41,14 @@ CLOSED_FILE = "Closed_Tickets.xlsx"
 OUTPUT_HTML = "index.html"
 HISTORY_FILE = "pending_history.json"
 
+# Nairobi, Kenya time zone (East Africa Time, UTC+3)
+NAIROBI_OFFSET = timezone(timedelta(hours=3))
+
 def get_report_time():
     """
     Determines the report timestamp based on the latest modification time 
-    of the uploaded data files (Pending/Closed Excel files), reflecting when 
-    they were uploaded/updated, with a fallback to current generation time.
+    of the uploaded data files (Pending/Closed Excel files), converted 
+    to Nairobi local time (EAT, UTC+3), with a fallback to current time.
     """
     pending_path = DATA_DIR / PENDING_FILE
     closed_path = DATA_DIR / CLOSED_FILE
@@ -55,8 +58,10 @@ def get_report_time():
     if closed_path.exists():
         times.append(closed_path.stat().st_mtime)
     if times:
-        return datetime.fromtimestamp(max(times))
-    return datetime.now()
+        # st_mtime is a UTC epoch timestamp; convert to UTC then shift to Nairobi (UTC+3)
+        dt_utc = datetime.fromtimestamp(max(times), tz=timezone.utc)
+        return dt_utc.astimezone(NAIROBI_OFFSET).replace(tzinfo=None)
+    return datetime.now(timezone.utc).astimezone(NAIROBI_OFFSET).replace(tzinfo=None)
 
 REPORT_TIME = get_report_time()
 
