@@ -41,7 +41,24 @@ CLOSED_FILE = "Closed_Tickets.xlsx"
 OUTPUT_HTML = "index.html"
 HISTORY_FILE = "pending_history.json"
 
-REPORT_TIME = datetime.now()
+def get_report_time():
+    """
+    Determines the report timestamp based on the latest modification time 
+    of the uploaded data files (Pending/Closed Excel files), reflecting when 
+    they were uploaded/updated, with a fallback to current generation time.
+    """
+    pending_path = DATA_DIR / PENDING_FILE
+    closed_path = DATA_DIR / CLOSED_FILE
+    times = []
+    if pending_path.exists():
+        times.append(pending_path.stat().st_mtime)
+    if closed_path.exists():
+        times.append(closed_path.stat().st_mtime)
+    if times:
+        return datetime.fromtimestamp(max(times))
+    return datetime.now()
+
+REPORT_TIME = get_report_time()
 
 # Age thresholds
 FRESH_MAX = 2                     # 0-2 days: on track
