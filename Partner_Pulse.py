@@ -21,6 +21,7 @@ Requires: pip install pandas openpyxl
 import html
 import json
 import math
+import os
 import re
 import sys
 import webbrowser
@@ -40,6 +41,9 @@ PENDING_FILE = "Pending_Tickets.xlsx"
 CLOSED_FILE = "Closed_Tickets.xlsx"
 OUTPUT_HTML = "index.html"
 HISTORY_FILE = "pending_history.json"
+
+# Automatically detect if running inside GitHub Actions
+IS_GITHUB_ACTIONS = os.environ.get("GITHUB_ACTIONS") == "true"
 
 # Nairobi, Kenya time zone (East Africa Time, UTC+3)
 NAIROBI_OFFSET = timezone(timedelta(hours=3))
@@ -82,9 +86,9 @@ OUTPUT_POOR = 40                  # Output % <= 40% -> Red
 # Explicit list of partner substrings to exclude from Page 3 Performance Table
 EXCLUDE_PARTNERS = ["adrian", "unassigned"]
 
-SERVE = True                      # Launch local http server
+SERVE = not IS_GITHUB_ACTIONS         # False on GitHub Actions, True locally
 PORT = 8000
-OPEN_BROWSER = True               # Open in default browser automatically
+OPEN_BROWSER = not IS_GITHUB_ACTIONS  # False on GitHub Actions, True locally
 
 # "Other" section removed completely
 CATEGORIES = ["Maintenance", "Connections", "Relocation", "FTTB", "PTMP"]
@@ -154,7 +158,6 @@ def clean_partner(value):
     if pd.isna(value):
         return "Unassigned"
     text = " ".join(str(value).split())
-    # Remove both "agents" (and "agent") and "ftth" case-insensitively anywhere in the name
     text = re.sub(r"\bagents?\b", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bftth\b", "", text, flags=re.IGNORECASE)
     text = " ".join(text.split())
@@ -237,12 +240,6 @@ def colour_pct_aged(value):
 # ============================================================
 
 def make_classifier(df):
-    """
-    Builds a row classifier function checking:
-      1. Relocation: Service type contains "FTTH Relocation"
-      2. FTTB: Account number starts with "9"
-      3. PTMP: Account number starts with "3"
-    """
     account_col = None
     for col in df.columns:
         if "account" in str(col).strip().lower():
@@ -263,24 +260,21 @@ def make_classifier(df):
             break
 
     def classify(row):
-        # 1. Relocation Check (Service type "FTTH Relocation")
         srv_val = str(row.get(service_col, "")).strip() if service_col else ""
         if "ftth relocation" in srv_val.lower() or "relocation" in srv_val.lower():
             return "Relocation"
 
-        # 2. Account Number Checks (FTTB starts with 9, PTMP starts with 3)
         acc_val = row.get(account_col, "") if account_col else ""
         if pd.notna(acc_val):
             acc_str = str(acc_val).strip()
             if "." in acc_str:
-                acc_str = acc_str.split(".")[0]  # Strip float decimal like .0
+                acc_str = acc_str.split(".")[0]
             
             if acc_str.startswith("9"):
                 return "FTTB"
             if acc_str.startswith("3"):
                 return "PTMP"
 
-        # 3. Fallback Heuristics to Maintenance / Connections
         issue_val = clean_text(row.get(issue_col, "")) if issue_col else ""
         desc_val = clean_text(row.get("Short description", ""))
         combined = f"{issue_val} {desc_val} {clean_text(srv_val)}"
@@ -639,7 +633,6 @@ def main():
 
     prev_label = datetime.strptime(prev_key, "%Y-%m-%d").strftime("%d %b") if prev_key else ""
 
-    # Totals for KPIs (Total Closed, Before 4PM Pending, After 4PM Pending)
     total_closed_kpi = len(cdf) if cdf is not None else 0
     total_before_kpi = int((~df["AfterCutoff"]).sum())
     total_after_kpi = int(df["AfterCutoff"].sum())
