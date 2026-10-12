@@ -58,7 +58,6 @@ def get_report_time():
     if closed_path.exists():
         times.append(closed_path.stat().st_mtime)
     if times:
-        # st_mtime is a UTC epoch timestamp; convert to UTC then shift to Nairobi (UTC+3)
         dt_utc = datetime.fromtimestamp(max(times), tz=timezone.utc)
         return dt_utc.astimezone(NAIROBI_OFFSET).replace(tzinfo=None)
     return datetime.now(timezone.utc).astimezone(NAIROBI_OFFSET).replace(tzinfo=None)
@@ -87,7 +86,8 @@ SERVE = True                      # Launch local http server
 PORT = 8000
 OPEN_BROWSER = True               # Open in default browser automatically
 
-CATEGORIES = ["Maintenance", "Connections", "Relocation", "FTTB", "PTMP", "Other"]
+# "Other" section removed completely
+CATEGORIES = ["Maintenance", "Connections", "Relocation", "FTTB", "PTMP"]
 
 CAT_COLOR = {
     "Maintenance": "#F28C1B",
@@ -95,7 +95,6 @@ CAT_COLOR = {
     "Relocation": "#2E9B4F",
     "FTTB": "#7B3FE4",
     "PTMP": "#78909C",
-    "Other": "#9AA5B1",
 }
 
 CAT_ICON = {
@@ -104,11 +103,11 @@ CAT_ICON = {
     "Relocation": "&#128260;",
     "FTTB": "&#127968;",
     "PTMP": "&#128225;",
-    "Other": "&#8943;",
 }
 
 CATEGORY_MAP = {
     "Connections": "Connections",
+    "FTTB": "FTTB",
     "FTTB Connection": "FTTB",
     "FTTB Maintenance": "FTTB",
     "Maintenance": "Maintenance",
@@ -155,14 +154,21 @@ def clean_partner(value):
     if pd.isna(value):
         return "Unassigned"
     text = " ".join(str(value).split())
-    text = re.sub(r"^agents?\s+", "", text, flags=re.IGNORECASE)
+    # Remove both "agents" (and "agent") and "ftth" case-insensitively anywhere in the name
+    text = re.sub(r"\bagents?\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bftth\b", "", text, flags=re.IGNORECASE)
+    text = " ".join(text.split())
     return text or "Unassigned"
 
 
 def raw_partner(value):
     if pd.isna(value):
         return "Unassigned"
-    return " ".join(str(value).split()) or "Unassigned"
+    text = " ".join(str(value).split())
+    text = re.sub(r"\bagents?\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bftth\b", "", text, flags=re.IGNORECASE)
+    text = " ".join(text.split())
+    return text or "Unassigned"
 
 
 def hex_to_rgb(color):
@@ -230,47 +236,74 @@ def colour_pct_aged(value):
 # CLASSIFICATION & DATA INGESTION
 # ============================================================
 
-def classify_issue_type(row):
-    issue_type = clean_text(row.get("Issue type", ""))
-    service = clean_text(row.get("Service", ""))
-    description = clean_text(row.get("Short description", ""))
-    business_type = clean_text(row.get("Business type", ""))
-    location = clean_text(row.get("Location", ""))
+def make_classifier(df):
+    """
+    Builds a row classifier function checking:
+      1. Relocation: Service type contains "FTTH Relocation"
+      2. FTTB: Account number starts with "9"
+      3. PTMP: Account number starts with "3"
+    """
+    account_col = None
+    for col in df.columns:
+        if "account" in str(col).strip().lower():
+            account_col = col
+            break
 
-    combined = " ".join([issue_type, service, description, business_type, location])
+    service_col = None
+    for col in df.columns:
+        if "service" in str(col).strip().lower():
+            service_col = col
+            break
 
-    if "fttb" in combined:
-        if "maintenance" in combined or "maint" in combined or "mnt" in combined:
-            return "FTTB Maintenance"
-        if "connection" in combined or "connect" in combined:
-            return "FTTB Connection"
+    issue_col = None
+    for col in df.columns:
+        c_low = str(col).strip().lower()
+        if "issue" in c_low or "category" in c_low:
+            issue_col = col
+            break
 
-    if "ptmp" in combined:
-        return "PTMP"
+    def classify(row):
+        # 1. Relocation Check (Service type "FTTH Relocation")
+        srv_val = str(row.get(service_col, "")).strip() if service_col else ""
+        if "ftth relocation" in srv_val.lower() or "relocation" in srv_val.lower():
+            return "Relocation"
 
-    if "relocation" in combined or "relocate" in combined or "relocated" in combined:
-        return "Relocation"
+        # 2. Account Number Checks (FTTB starts with 9, PTMP starts with 3)
+        acc_val = row.get(account_col, "") if account_col else ""
+        if pd.notna(acc_val):
+            acc_str = str(acc_val).strip()
+            if "." in acc_str:
+                acc_str = acc_str.split(".")[0]  # Strip float decimal like .0
+            
+            if acc_str.startswith("9"):
+                return "FTTB"
+            if acc_str.startswith("3"):
+                return "PTMP"
 
-    if "maintenance" in issue_type or "maint" in issue_type:
-        return "Maintenance"
+        # 3. Fallback Heuristics to Maintenance / Connections
+        issue_val = clean_text(row.get(issue_col, "")) if issue_col else ""
+        desc_val = clean_text(row.get("Short description", ""))
+        combined = f"{issue_val} {desc_val} {clean_text(srv_val)}"
 
-    if "connection" in issue_type or "connection" in service or "connection" in description:
+        if "maintenance" in combined or "maint" in combined:
+            return "Maintenance"
+
         return "Connections"
 
-    return None
+    return classify
 
 
-def dashboard_category(row):
-    return CATEGORY_MAP.get(classify_issue_type(row), "Other")
+def dashboard_category(row, classifier):
+    return CATEGORY_MAP.get(classifier(row), "Connections")
 
 
-def work_type_category(row):
-    cat = dashboard_category(row)
+def work_type_category(row, classifier):
+    cat = dashboard_category(row, classifier)
     if cat in ("Connections", "FTTB"):
         return "Connection"
     if cat == "Maintenance":
         return "Maintenance"
-    return None
+    return "Connection"
 
 
 def load_two_files():
@@ -307,10 +340,12 @@ def prepare_pending(df):
     if group_col is None or created_col is None:
         raise ValueError(f"Pending file missing 'Assignment group' or 'Created'. Found: {list(df.columns)}")
 
+    classifier = make_classifier(df)
+
     df["Partner"] = df[group_col].apply(clean_partner)
     df["PartnerRaw"] = df[group_col].apply(raw_partner)
-    df["Category"] = df.apply(dashboard_category, axis=1)
-    df["WorkType"] = df.apply(work_type_category, axis=1)
+    df["Category"] = df.apply(lambda r: dashboard_category(r, classifier), axis=1)
+    df["WorkType"] = df.apply(lambda r: work_type_category(r, classifier), axis=1)
 
     created = pd.to_datetime(df[created_col], errors="coerce", format="ISO8601")
     bad = created.isna()
@@ -334,9 +369,11 @@ def prepare_closed(cdf):
         print("WARNING: Closed file missing 'Assignment group' column.")
         return None, None
 
+    classifier = make_classifier(cdf)
+
     cdf["Partner"] = cdf[group_col].apply(clean_partner)
     cdf["PartnerRaw"] = cdf[group_col].apply(raw_partner)
-    cdf["WorkType"] = cdf.apply(work_type_category, axis=1)
+    cdf["WorkType"] = cdf.apply(lambda r: work_type_category(r, classifier), axis=1)
 
     team_col = None
     for name in TEAM_COLUMNS:
@@ -834,12 +871,11 @@ def main():
 </div>"""
 
     # ============================================================
-    # PAGE 3 RENDER (Partner Output Performance - STRICT SUBSTRING FILTER FOR Adrian & Unassigned)
+    # PAGE 3 RENDER (Partner Output Performance)
     # ============================================================
 
     all_partners = set(df["Partner"].unique()) | (set(cdf["Partner"].unique()) if cdf is not None else set())
 
-    # Substring match to filter out any variant containing "adrian" or "unassigned"
     p3_partners = [
         p for p in all_partners 
         if not any(ex in str(p).lower() for ex in EXCLUDE_PARTNERS)
@@ -889,7 +925,6 @@ def main():
             "out_pct": out_pct,
         })
 
-    # Sort descending by Output % (None values placed at the very end)
     partner_records.sort(key=lambda x: (x["out_pct"] is not None, x["out_pct"] if x["out_pct"] is not None else -1), reverse=True)
 
     p3_rows = []
@@ -899,11 +934,10 @@ def main():
         out_pct = rec["out_pct"]
         out_pct_str = f"{out_pct}%" if out_pct is not None else "-"
 
-        # Highlight green for Output >= 70%
         if out_pct is not None and out_pct >= OUTPUT_GOOD:
-            bg_col = "background:#28A745;color:#FFFFFF;"  # Solid Green
+            bg_col = "background:#28A745;color:#FFFFFF;"
         elif out_pct is not None and out_pct <= OUTPUT_POOR:
-            bg_col = "background:#F8D7DA;color:#721C24;"  # Soft Red
+            bg_col = "background:#F8D7DA;color:#721C24;"
         else:
             bg_col = "background:#FFFFFF;"
 
