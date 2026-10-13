@@ -1,5 +1,5 @@
 """
-PARTNER OPERATIONS PULSE (3-Page Dashboard)
+PARTNER OPERATIONS PULSE (4-Page Dashboard)
 --------------------------------------------------------
 Reads TWO separate Excel files:
   1. Pending_Tickets.xlsx (Open / Pending backlog)
@@ -7,13 +7,19 @@ Reads TWO separate Excel files:
 
 Generates index.html with:
   - Responsive screen layout matching device screen width
-  - Strict fixed 3-page poster structure reserved for PDF/Print
+  - Strict fixed 4-page poster structure reserved for PDF/Print
   - Page 1: Daily Partner Operations Pulse (includes Closed & 4PM Cutoff KPIs)
   - Page 2: Partner Aging & Accountability Heatmap
   - Page 3: Partner Output Performance & Productivity
             - Substring filter strictly excludes "Adrian" and "Unassigned"
             - Sorted descending by Output % (Highest to Lowest)
             - Output % >= 70% highlighted green
+  - Page 4: Service Quality Scorecard (from Closed tickets)
+            - By category: Maintenance, Connections, Relocation, FTTB, PTMP
+            - MTTR: mean hours from Created to Actual work end
+            - FVR: First Visit Resolution - closed tickets that needed no repeat visit
+            - Same Day SLA: tickets closed on the same calendar day they were created
+            - 0-4hrs SLA: percentage of tickets closed between 0 and 4 hours
 
 Requires: pip install pandas openpyxl
 """
@@ -86,11 +92,31 @@ OUTPUT_POOR = 40                  # Output % <= 40% -> Red
 # Explicit list of partner substrings to exclude from Page 3 Performance Table
 EXCLUDE_PARTNERS = ["adrian", "unassigned"]
 
+# Page 4 (Service Quality) settings
+TOTAL_PAGES = 4
+FTTB_PREFIX = "9"                 # account number starts with 9 -> FTTB
+PTMP_PREFIX = "3"                 # account number starts with 3 -> PTMP
+RELOCATION_PREFIX = "1"           # service "FTTH Relocation" + account starting with 1 -> Relocation
+RESOLVED_COLUMNS = ["Actual work end", "Resolved", "Closed", "Updated"]  # first one found = resolution time
+REVISIT_PATTERN = r"re-?visit|re-?open|return visit|second visit"        # work-note wording = repeat visit
+MTTR_GOOD_HRS = 16                # MTTR <= 16 hrs -> Green
+MTTR_POOR_HRS = 36                # MTTR >= 36 hrs -> Red
+FVR_GOOD = 95                     # First Visit Resolution >= 95% -> Green
+FVR_POOR = 90                     # First Visit Resolution <= 90% -> Red
+SAME_DAY_GOOD = 50                # Same Day SLA >= 50% -> Green
+SAME_DAY_POOR = 25                # Same Day SLA <= 25% -> Red
+P4_MIN_CLOSED_FOR_RANKING = 20    # minimum closed tickets for the Top 5 lists
+P4_MAX_PARTNERS = 20              # partners listed individually (the rest -> "Other partners")
+MTTR_BUCKETS = [                  # resolution-time bands (upper limit in hours, label)
+    (4, "0&ndash;4 hrs"), (12, "4&ndash;12 hrs"), (24, "12&ndash;24 hrs"),
+    (48, "24&ndash;48 hrs"), (None, "48+ hrs"),
+]
+BUCKET_COLORS = ["#1FA34A", "#7BC96F", "#F5D23B", "#F2A93B", "#EF3B2D"]
+
 SERVE = not IS_GITHUB_ACTIONS         # False on GitHub Actions, True locally
 PORT = 8000
 OPEN_BROWSER = not IS_GITHUB_ACTIONS  # False on GitHub Actions, True locally
 
-# "Other" section removed completely
 CATEGORIES = ["Maintenance", "Connections", "Relocation", "FTTB", "PTMP"]
 
 CAT_COLOR = {
@@ -405,6 +431,345 @@ def previous_snapshot(history, today_key):
 
 
 # ============================================================
+# PAGE 4: SERVICE QUALITY (MTTR / FVR / SAME DAY SLA BY CATEGORY)
+# ============================================================
+
+def parse_dates(series):
+    parsed = pd.to_datetime(series, errors="coerce", format="ISO8601")
+    bad = parsed.isna()
+    if bad.any():
+        parsed.loc[bad] = pd.to_datetime(series[bad], errors="coerce", dayfirst=True)
+    return parsed
+
+
+def find_contains(df, *words):
+    for column in df.columns:
+        name = str(column).strip().lower()
+        if any(w in name for w in words):
+            return column
+    return None
+
+
+def p4_category(row, account_col, service_col, issue_col):
+    account = row.get(account_col, "") if account_col else ""
+    prefix = str(account).strip().split(".")[0][:1] if pd.notna(account) else ""
+    service = clean_text(row.get(service_col, "")) if service_col else ""
+
+    if "ftth relocation" in service and prefix == RELOCATION_PREFIX:
+        return "Relocation"
+    if prefix == FTTB_PREFIX:
+        return "FTTB"
+    if prefix == PTMP_PREFIX:
+        return "PTMP"
+
+    issue = clean_text(row.get(issue_col, "")) if issue_col else f"{clean_text(row.get('Short description', ''))} {service}"
+
+    return "Maintenance" if "maint" in issue else "Connections"
+
+
+def prepare_service_quality(cdf):
+    if cdf is None or cdf.empty:
+        return None
+
+    created_col = find_column(cdf, "Created")
+    end_col = next((find_column(cdf, n) for n in RESOLVED_COLUMNS if find_column(cdf, n)), None)
+
+    if created_col is None or end_col is None:
+        print(f"WARNING: Closed file needs 'Created' and one of {RESOLVED_COLUMNS} for Page 4.")
+        return None
+
+    q = cdf.copy()
+    created = parse_dates(q[created_col])
+    ended = parse_dates(q[end_col])
+    hours = (ended - created).dt.total_seconds() / 3600
+
+    valid = hours.notna() & (hours >= 0)
+    q = q[valid].copy()
+    q["_Hours"] = hours[valid]
+    q["_SameDay"] = created[valid].dt.normalize() == ended[valid].dt.normalize()
+
+    account_col = find_contains(q, "account")
+    service_col = find_contains(q, "service")
+    issue_col = find_contains(q, "issue", "category")
+    q["_Category"] = q.apply(lambda r: p4_category(r, account_col, service_col, issue_col), axis=1)
+
+    repeat = pd.Series(False, index=q.index)
+    parent_col = find_column(q, "Parent")
+    if parent_col is not None:
+        repeat |= q[parent_col].map(q[parent_col].value_counts()).fillna(1) > 1
+
+    notes_col = find_column(q, "Work notes")
+    if notes_col is not None:
+        repeat |= q[notes_col].fillna("").astype(str).str.contains(REVISIT_PATTERN, case=False, regex=True)
+
+    state_col = find_column(q, "State")
+    if state_col is not None:
+        repeat |= q[state_col].fillna("").astype(str).str.contains("incomplete", case=False)
+
+    q["_Revisit"] = repeat
+    return q
+
+
+def mean_hours(sub):
+    return float(sub["_Hours"].mean()) if len(sub) else None
+
+
+def quality_stats(sub):
+    n = len(sub)
+    revisits = int(sub["_Revisit"].sum())
+    same = int(sub["_SameDay"].sum())
+    hrs = sub["_Hours"]
+
+    h4 = int((hrs <= 4.0).sum())
+
+    buckets, lower = [], -1.0
+    for limit, _ in MTTR_BUCKETS:
+        upper = float("inf") if limit is None else limit
+        buckets.append(int(((hrs > lower) & (hrs <= upper)).sum()))
+        lower = upper
+
+    return {
+        "n": n,
+        "mttr": mean_hours(sub),
+        "median": float(hrs.median()) if n else None,
+        "cats": {c: mean_hours(sub[sub["_Category"] == c]) for c in CATEGORIES},
+        "revisits": revisits,
+        "fvr": pct(n - revisits, n) if n else None,
+        "same": same,
+        "same_pct": pct(same, n) if n else None,
+        "h4": h4,
+        "pct_4h": pct(h4, n) if n else None,
+        "buckets": buckets,
+    }
+
+
+def fh(value):
+    return "-" if value is None else f"{value:.1f}"
+
+
+def fp(value, digits=0):
+    return "-" if value is None else f"{value:.{digits}f}%"
+
+
+def quality_style(value, good, poor, higher_is_better=True):
+    if value is None:
+        return ""
+    is_good = value >= good if higher_is_better else value <= good
+    is_poor = value <= poor if higher_is_better else value >= poor
+    if is_good:
+        return "background:#28A745;color:#FFFFFF;"
+    if is_poor:
+        return "background:#F8D7DA;color:#721C24;"
+    return ""
+
+
+def build_page4(cdf, stamp):
+    head = header(
+        4, "Service Quality", "Scorecard", "#C3A6FF",
+        f"MTTR, FVR &amp; Same Day SLA &nbsp;|&nbsp; As at {stamp}",
+        "Fix Fast.<br>Fix Right.<br>Fix First Time.",
+    )
+
+    q = prepare_service_quality(cdf)
+
+    if q is not None:
+        q = q[~q["Partner"].str.lower().apply(lambda p: any(ex in p for ex in EXCLUDE_PARTNERS))]
+
+    if q is None or q.empty:
+        return f"""
+<div class="page">
+{head}
+<div class="body">
+  <div class="card"><h3>No closed ticket data available</h3>
+    <div style="color:#6B7C93;padding:10px 0">Place Closed_Tickets.xlsx next to this script.</div></div>
+</div>
+</div>"""
+
+    overall = quality_stats(q)
+    cat_stats = {c: quality_stats(q[q["_Category"] == c]) for c in CATEGORIES}
+
+    kpis = f"""
+<div class="row">
+  <div class="card kpi p4"><div class="ico" style="background:#1E6FD0">&#9200;</div>
+    <div><div class="lbl">MTTR</div>
+      <div class="big">{fh(overall['mttr'])}<span class="unit">hrs</span></div>
+      <div class="sub2">Mean time to Resolve / Restore / Install</div></div></div>
+  <div class="card kpi p4"><div class="ico" style="background:#1FA34A">&#127919;</div>
+    <div><div class="lbl">First Visit Resolution</div>
+      <div class="big">{fp(overall['fvr'], 1)}</div>
+      <div class="sub2">{num(overall['n'] - overall['revisits'])} of {num(overall['n'])} fixed first time</div></div></div>
+  <div class="card kpi p4"><div class="ico" style="background:#F28C1B">&#128197;</div>
+    <div><div class="lbl">Same Day SLA</div>
+      <div class="big">{fp(overall['same_pct'], 1)}</div>
+      <div class="sub2">{num(overall['same'])} of {num(overall['n'])} closed on the day raised</div></div></div>
+</div>"""
+
+    tiles = '<div class="tiles p4t">' + "".join(
+        f'<div class="tile"><div class="top" style="background:{CAT_COLOR[c]}"><i>{CAT_ICON[c]}</i>{c}'
+        f'<small>{num(cat_stats[c]["n"])} closed</small></div>'
+        f'<div class="n" style="color:{CAT_COLOR[c]}">{fh(cat_stats[c]["mttr"])}<span class="u">hrs</span></div>'
+        f'<div class="p">MTTR &middot; median {fh(cat_stats[c]["median"])}</div>'
+        f'<div class="mini"><span><b>{fp(cat_stats[c]["fvr"])}</b>FVR</span>'
+        f'<span><b>{fp(cat_stats[c]["same_pct"])}</b>Same day</span>'
+        f'<span><b>{fp(cat_stats[c]["pct_4h"])}</b>0&ndash;4hrs</span></div></div>'
+        for c in CATEGORIES
+    ) + "</div>"
+
+    total_n = overall["n"] or 1
+    shares = [pct(b, total_n) for b in overall["buckets"]]
+
+    bar = "".join(
+        f'<div style="width:{max(sh, .5):.1f}%;background:{BUCKET_COLORS[i]}"></div>'
+        for i, sh in enumerate(shares)
+    )
+    cols = "".join(
+        f'<div><b style="color:{BUCKET_COLORS[i]}">{num(overall["buckets"][i])}</b>{label}<br>({shares[i]:.1f}%)</div>'
+        for i, (_, label) in enumerate(MTTR_BUCKETS)
+    )
+    over_24 = sum(overall["buckets"][3:])
+
+    profile_card = f"""
+<div class="card prof" style="flex:1">
+  <h3>Resolution Time Profile <small>(All Closed)</small></h3>
+  <div class="agebar">{bar}</div>
+  <div class="agecols five">{cols}</div>
+  <div class="callout">
+    <div class="big">{num(over_24)}</div>
+    <div class="txt">tickets took over 24 hrs<br>{pct(over_24, total_n):.1f}% of closed tickets</div>
+    <div class="rq">Long waits drive up MTTR</div>
+  </div>
+</div>"""
+
+    partners = {p: quality_stats(g) for p, g in q.groupby("Partner")}
+    raw_names = q.groupby("Partner")["PartnerRaw"].first().to_dict()
+
+    by_volume = sorted(partners, key=lambda p: (-partners[p]["n"], p.lower()))
+    shown = sorted(by_volume[:P4_MAX_PARTNERS], key=lambda p: (partners[p]["mttr"], p.lower()))
+    rest = by_volume[P4_MAX_PARTNERS:]
+    other = quality_stats(q[q["Partner"].isin(rest)]) if rest else None
+
+    def score_row(idx, label, s, cls="", digits=0):
+        styled = not cls
+        mttr_css = quality_style(s["mttr"], MTTR_GOOD_HRS, MTTR_POOR_HRS, False) if styled else ""
+        fvr_css = quality_style(s["fvr"], FVR_GOOD, FVR_POOR) if styled else ""
+        same_css = quality_style(s["same_pct"], SAME_DAY_GOOD, SAME_DAY_POOR) if styled else ""
+        cat_cells = "".join(f'<td>{fh(s["cats"][c])}</td>' for c in CATEGORIES)
+        return (
+            f'<tr class="{cls}"><td>{idx}</td><td class="l" style="white-space:nowrap">{esc(label)}</td>'
+            f'<td><b>{num(s["n"])}</b></td>{cat_cells}'
+            f'<td style="{mttr_css}"><b>{fh(s["mttr"])}</b></td>'
+            f'<td style="{fvr_css}"><b>{fp(s["fvr"], digits)}</b></td><td>{num(s["revisits"])}</td>'
+            f'<td style="{same_css}"><b>{fp(s["same_pct"], digits)}</b></td></tr>'
+        )
+
+    score_rows = [score_row(i, raw_names.get(p, p), partners[p]) for i, p in enumerate(shown, 1)]
+
+    if other:
+        score_rows.append(score_row("", "Other partners", other, "oth"))
+
+    score_rows.append(score_row("", "TOTAL", overall, "tot", digits=1))
+
+    cat_heads = "".join(
+        f'<th style="color:{CAT_COLOR[c]}">{label}</th>'
+        for c, label in zip(CATEGORIES, ["Maint", "Conn", "Reloc", "FTTB", "PTMP"])
+    )
+
+    table_card = f"""
+<div class="card" style="flex:2.1;padding:10px 10px;min-width:0">
+  <h3 style="margin-bottom:6px">Partner Service Scorecard <small>(fastest MTTR first)</small></h3>
+  <table class="tbl p4">
+    <thead>
+      <tr><th rowspan="2">#</th><th class="l" rowspan="2">Partner</th><th rowspan="2">Closed</th>
+          <th class="grp" colspan="6">MTTR (hrs)</th><th class="grp" colspan="2">First Visit Res.</th><th rowspan="2">Same Day</th></tr>
+      <tr>{cat_heads}<th>Overall</th><th>FVR %</th><th>Revisits</th></tr>
+    </thead>
+    <tbody>{''.join(score_rows)}</tbody>
+  </table>
+</div>"""
+
+    eligible = [p for p in partners if partners[p]["n"] >= P4_MIN_CLOSED_FOR_RANKING]
+
+    fastest = sorted(eligible, key=lambda p: (partners[p]["mttr"], p.lower()))[:5]
+    best_fvr = sorted(eligible, key=lambda p: (-partners[p]["fvr"], -partners[p]["n"], p.lower()))[:5]
+    best_same = sorted(eligible, key=lambda p: (-partners[p]["same_pct"], -partners[p]["n"], p.lower()))[:5]
+
+    def small_rank(items, colour):
+        return rank_rows(items, colour, small=True).replace('class="rank sm"', 'class="rank sm xs"')
+
+    fast_list = small_rank(
+        [(raw_names.get(p, p), 1 / max(partners[p]["mttr"], 0.1), f'<b>{partners[p]["mttr"]:.1f}h</b>') for p in fastest],
+        "linear-gradient(90deg,#1E6FD0,#4FA3F7)",
+    )
+    fvr_list = small_rank(
+        [(raw_names.get(p, p), partners[p]["fvr"], f'<b>{partners[p]["fvr"]:.0f}%</b>') for p in best_fvr],
+        "linear-gradient(90deg,#28A745,#4CD964)",
+    )
+    same_list = small_rank(
+        [(raw_names.get(p, p), partners[p]["same_pct"], f'<b>{partners[p]["same_pct"]:.0f}%</b>') for p in best_same],
+        "linear-gradient(90deg,#7B3FE4,#A77BFF)",
+    )
+
+    side_cards = f"""
+<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0">
+  <div class="card" style="flex:1;padding:10px 12px;min-width:0"><h3 style="font-size:17px">Top 5 Fastest MTTR <small style="font-size:13px">(hrs)</small></h3>{fast_list}</div>
+  <div class="card" style="flex:1;padding:10px 12px;min-width:0"><h3 style="font-size:17px">Top 5 by First Visit Res. <small style="font-size:13px">(%)</small></h3>{fvr_list}</div>
+  <div class="card" style="flex:1;padding:10px 12px;min-width:0"><h3 style="font-size:17px">Top 5 by Same Day SLA <small style="font-size:13px">(%)</small></h3>{same_list}</div>
+</div>"""
+
+    live_cats = [c for c in CATEGORIES if cat_stats[c]["n"] > 0]
+    takeaways = [f"Overall MTTR is {fh(overall['mttr'])} hrs (median {fh(overall['median'])})."]
+
+    if live_cats:
+        slow_c = max(live_cats, key=lambda c: cat_stats[c]["mttr"])
+        fast_c = min(live_cats, key=lambda c: cat_stats[c]["mttr"])
+        takeaways[0] = (
+            f"Overall MTTR is {fh(overall['mttr'])} hrs (median {fh(overall['median'])}): "
+            f"{fast_c} is fastest ({fh(cat_stats[fast_c]['mttr'])} hrs), {slow_c} slowest ({fh(cat_stats[slow_c]['mttr'])} hrs)."
+        )
+
+    if eligible:
+        fast = min(eligible, key=lambda p: partners[p]["mttr"])
+        slow = max(eligible, key=lambda p: partners[p]["mttr"])
+        takeaways.append(
+            f"{esc(raw_names.get(fast, fast))} resolves fastest ({partners[fast]['mttr']:.1f} hrs); "
+            f"{esc(raw_names.get(slow, slow))} is slowest ({partners[slow]['mttr']:.1f} hrs)."
+        )
+        low_fvr = min(eligible, key=lambda p: partners[p]["fvr"])
+        takeaways.append(
+            f"First Visit Resolution is {overall['fvr']:.1f}%; "
+            f"{esc(raw_names.get(low_fvr, low_fvr))} is lowest at {partners[low_fvr]['fvr']:.0f}%."
+        )
+
+    if live_cats:
+        best_c = max(live_cats, key=lambda c: cat_stats[c]["same_pct"])
+        worst_c = min(live_cats, key=lambda c: cat_stats[c]["same_pct"])
+        takeaways.append(
+            f"Only {overall['same_pct']:.1f}% close the same day: {best_c} leads "
+            f"({cat_stats[best_c]['same_pct']:.0f}%), {worst_c} trails ({cat_stats[worst_c]['same_pct']:.0f}%)."
+        )
+
+    take_html = "".join(
+        f'<div class="take"><div class="no">{i}</div><div>{text}</div></div>'
+        for i, text in enumerate(takeaways, 1)
+    )
+
+    take_panel = f"""
+<div class="panel p4" style="flex:1"><div class="ph" style="background:#133B80">&#128202; Key Takeaways</div>
+<div class="pb">{take_html}</div></div>"""
+
+    return f"""
+<div class="page">
+{head}
+<div class="body">
+  {kpis}
+  {tiles}
+  <div class="row grow">{table_card}{side_cards}</div>
+  <div class="row">{profile_card}{take_panel}</div>
+</div>
+</div>"""
+
+
+# ============================================================
 # HTML BUILDING BLOCKS
 # ============================================================
 
@@ -529,6 +894,33 @@ table.heat th { padding: 6px 0; font-size: 13px; }
 .take .no { width: 26px; height: 26px; border-radius: 50%; background: #1E6FD0; color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex: none; }
 """
 
+CSS_P4 = """
+.kpi.p4 { height: auto; min-height: 124px; }
+.kpi.p4 .big { font-size: 60px; }
+.kpi .unit { font-size: 22px; font-weight: 700; letter-spacing: 0; color: #4B5E78; margin-left: 6px; }
+.kpi .sub2 { font-size: 12.5px; color: #4B5E78; margin-top: 3px; line-height: 1.25; }
+.tile .n .u { font-size: 15px; font-weight: 700; color: #4B5E78; margin-left: 4px; }
+.tile .top small { display: block; font-size: 12px; font-weight: 400; opacity: .9; }
+.tile .mini { display: flex; border-top: 1px solid #E3EBF4; }
+.tile .mini span { flex: 1; font-size: 11px; color: #4B5E78; padding: 5px 2px; }
+.tile .mini span + span { border-left: 1px solid #E3EBF4; }
+.tile .mini b { display: block; font-size: 16px; color: #12233F; }
+.agecols.five div { font-size: 13px; }
+.agecols.five b { font-size: 23px; }
+table.p4 th { font-size: 12px; padding: 4px 2px; }
+table.p4 th.grp { border-bottom: 1px solid #C9D8EA; }
+table.p4 td { height: 21px; padding: 0 2px; font-size: 12.5px; }
+.tiles.p4t .tile .n { font-size: 30px; padding-top: 4px; }
+.tiles.p4t .tile .p { padding-bottom: 4px; }
+.card.prof .agebar { margin: 8px 0 6px; }
+.card.prof .callout { margin-top: 8px; padding: 6px 14px; }
+.rank.xs { margin: 3px 0; }
+.panel.p4 .ph { font-size: 18px; padding: 8px 16px; }
+.panel.p4 .pb { padding: 2px 16px 8px; }
+.panel.p4 .take { font-size: 13.5px; padding: 5px 0; line-height: 1.25; }
+.panel.p4 .take .no { width: 24px; height: 24px; font-size: 13px; }
+"""
+
 TOWER_SVG = """
 <svg class="tower" viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#9EC7F2" stroke-width="1.6">
   <path d="M50 14 L26 126 M50 14 L74 126"/>
@@ -543,7 +935,7 @@ TOWER_SVG = """
 def header(page, title, accent, accent_colour, subtitle, tagline):
     return f"""
 <div class="hdr" style="--accent:{accent_colour}">
-  <div class="tag">Page {page} of 3</div>
+  <div class="tag">Page {page} of {TOTAL_PAGES}</div>
   <h1>{title} <span>{accent}</span></h1>
   <div class="sub">{subtitle}</div>
   <div class="tagline">{tagline}</div>
@@ -980,6 +1372,8 @@ def main():
 </div>
 </div>"""
 
+    page4 = build_page4(cdf, stamp)
+
     # ============================================================
     # WRITE FILE & SERVE
     # ============================================================
@@ -988,8 +1382,8 @@ def main():
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Partner Operations Pulse - {stamp}</title>
-<style>{CSS}</style></head>
-<body>{page1}{page2}{page3}</body></html>"""
+<style>{CSS}{CSS_P4}</style></head>
+<body>{page1}{page2}{page3}{page4}</body></html>"""
 
     html_path = DATA_DIR / OUTPUT_HTML
 
