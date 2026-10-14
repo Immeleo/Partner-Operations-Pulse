@@ -1,5 +1,5 @@
 """
-PARTNER OPERATIONS PULSE (4-Page Dashboard)
+PARTNER OPERATIONS PULSE (5-Page Dashboard)
 --------------------------------------------------------
 Reads TWO separate Excel files:
   1. Pending_Tickets.xlsx (Open / Pending backlog)
@@ -7,19 +7,15 @@ Reads TWO separate Excel files:
 
 Generates index.html with:
   - Responsive screen layout matching device screen width
-  - Strict fixed 4-page poster structure reserved for PDF/Print
+  - Strict fixed 5-page poster structure reserved for PDF/Print
   - Page 1: Daily Partner Operations Pulse (includes Closed & 4PM Cutoff KPIs)
   - Page 2: Partner Aging & Accountability Heatmap
   - Page 3: Partner Output Performance & Productivity
             - Substring filter strictly excludes "Adrian" and "Unassigned"
             - Sorted descending by Output % (Highest to Lowest)
             - Output % >= 70% highlighted green
-  - Page 4: Service Quality Scorecard (from Closed tickets)
-            - By category: Maintenance, Connections, Relocation, FTTB, PTMP
-            - MTTR: mean hours from Created to Actual work end
-            - FVR: First Visit Resolution - closed tickets that needed no repeat visit
-            - Same Day SLA: tickets closed on the same calendar day they were created
-            - 0-4hrs SLA: percentage of tickets closed between 0 and 4 hours
+  - Page 4: Service Quality KPIs, Tiles & Top 5s (Closed tickets)
+  - Page 5: Resolution Time Profile, Scorecard Table & Key Takeaways
 
 Requires: pip install pandas openpyxl
 """
@@ -92,8 +88,8 @@ OUTPUT_POOR = 40                  # Output % <= 40% -> Red
 # Explicit list of partner substrings to exclude from Page 3 Performance Table
 EXCLUDE_PARTNERS = ["adrian", "unassigned"]
 
-# Page 4 (Service Quality) settings
-TOTAL_PAGES = 4
+# Page 4 & 5 (Service Quality) settings
+TOTAL_PAGES = 5
 FTTB_PREFIX = "9"                 # account number starts with 9 -> FTTB
 PTMP_PREFIX = "3"                 # account number starts with 3 -> PTMP
 RELOCATION_PREFIX = "1"           # service "FTTH Relocation" + account starting with 1 -> Relocation
@@ -431,7 +427,7 @@ def previous_snapshot(history, today_key):
 
 
 # ============================================================
-# PAGE 4: SERVICE QUALITY (MTTR / FVR / SAME DAY SLA BY CATEGORY)
+# PAGES 4 & 5: SERVICE QUALITY & SCORECARD
 # ============================================================
 
 def parse_dates(series):
@@ -475,7 +471,7 @@ def prepare_service_quality(cdf):
     end_col = next((find_column(cdf, n) for n in RESOLVED_COLUMNS if find_column(cdf, n)), None)
 
     if created_col is None or end_col is None:
-        print(f"WARNING: Closed file needs 'Created' and one of {RESOLVED_COLUMNS} for Page 4.")
+        print(f"WARNING: Closed file needs 'Created' and one of {RESOLVED_COLUMNS} for Service Quality.")
         return None
 
     q = cdf.copy()
@@ -565,7 +561,7 @@ def quality_style(value, good, poor, higher_is_better=True):
 
 def build_page4(cdf, stamp):
     head = header(
-        4, "Service Quality", "Scorecard", "#C3A6FF",
+        4, "Service Quality", "KPIs & Top 5s", "#C3A6FF",
         f"MTTR, FVR &amp; Same Day SLA &nbsp;|&nbsp; As at {stamp}",
         "Fix Fast.<br>Fix Right.<br>Fix First Time.",
     )
@@ -615,6 +611,73 @@ def build_page4(cdf, stamp):
         for c in CATEGORIES
     ) + "</div>"
 
+    partners = {p: quality_stats(g) for p, g in q.groupby("Partner")}
+    raw_names = q.groupby("Partner")["PartnerRaw"].first().to_dict()
+    eligible = [p for p in partners if partners[p]["n"] >= P4_MIN_CLOSED_FOR_RANKING]
+
+    fastest = sorted(eligible, key=lambda p: (partners[p]["mttr"], p.lower()))[:5]
+    best_fvr = sorted(eligible, key=lambda p: (-partners[p]["fvr"], -partners[p]["n"], p.lower()))[:5]
+    best_same = sorted(eligible, key=lambda p: (-partners[p]["same_pct"], -partners[p]["n"], p.lower()))[:5]
+
+    def small_rank(items, colour):
+        return rank_rows(items, colour, small=True).replace('class="rank sm"', 'class="rank sm xs"')
+
+    fast_list = small_rank(
+        [(raw_names.get(p, p), 1 / max(partners[p]["mttr"], 0.1), f'<b>{partners[p]["mttr"]:.1f}h</b>') for p in fastest],
+        "linear-gradient(90deg,#1E6FD0,#4FA3F7)",
+    )
+    fvr_list = small_rank(
+        [(raw_names.get(p, p), partners[p]["fvr"], f'<b>{partners[p]["fvr"]:.0f}%</b>') for p in best_fvr],
+        "linear-gradient(90deg,#28A745,#4CD964)",
+    )
+    same_list = small_rank(
+        [(raw_names.get(p, p), partners[p]["same_pct"], f'<b>{partners[p]["same_pct"]:.0f}%</b>') for p in best_same],
+        "linear-gradient(90deg,#7B3FE4,#A77BFF)",
+    )
+
+    side_cards = f"""
+<div class="row" style="flex:1">
+  <div class="card" style="flex:1;padding:12px 14px;min-width:0"><h3 style="font-size:17px;margin-bottom:8px">Top 5 Fastest MTTR <small style="font-size:13px">(hrs)</small></h3>{fast_list}</div>
+  <div class="card" style="flex:1;padding:12px 14px;min-width:0"><h3 style="font-size:17px;margin-bottom:8px">Top 5 by First Visit Res. <small style="font-size:13px">(%)</small></h3>{fvr_list}</div>
+  <div class="card" style="flex:1;padding:12px 14px;min-width:0"><h3 style="font-size:17px;margin-bottom:8px">Top 5 by Same Day SLA <small style="font-size:13px">(%)</small></h3>{same_list}</div>
+</div>"""
+
+    return f"""
+<div class="page">
+{head}
+<div class="body">
+  {kpis}
+  {tiles}
+  {side_cards}
+</div>
+</div>"""
+
+
+def build_page5(cdf, stamp):
+    head = header(
+        5, "Service Quality", "Scorecard Table", "#C3A6FF",
+        f"Partner Breakdown &amp; Key Takeaways &nbsp;|&nbsp; As at {stamp}",
+        "Fix Fast.<br>Fix Right.<br>Fix First Time.",
+    )
+
+    q = prepare_service_quality(cdf)
+
+    if q is not None:
+        q = q[~q["Partner"].str.lower().apply(lambda p: any(ex in p for ex in EXCLUDE_PARTNERS))]
+
+    if q is None or q.empty:
+        return f"""
+<div class="page">
+{head}
+<div class="body">
+  <div class="card"><h3>No closed ticket data available</h3>
+    <div style="color:#6B7C93;padding:10px 0">Place Closed_Tickets.xlsx next to this script.</div></div>
+</div>
+</div>"""
+
+    overall = quality_stats(q)
+    cat_stats = {c: quality_stats(q[q["_Category"] == c]) for c in CATEGORIES}
+
     total_n = overall["n"] or 1
     shares = [pct(b, total_n) for b in overall["buckets"]]
 
@@ -629,11 +692,11 @@ def build_page4(cdf, stamp):
     over_24 = sum(overall["buckets"][3:])
 
     profile_card = f"""
-<div class="card prof" style="flex:1">
+<div class="card prof" style="flex:none">
   <h3>Resolution Time Profile <small>(All Closed)</small></h3>
   <div class="agebar">{bar}</div>
   <div class="agecols five">{cols}</div>
-  <div class="callout">
+  <div class="callout" style="margin-top:10px">
     <div class="big">{num(over_24)}</div>
     <div class="txt">tickets took over 24 hrs<br>{pct(over_24, total_n):.1f}% of closed tickets</div>
     <div class="rq">Long waits drive up MTTR</div>
@@ -689,33 +752,6 @@ def build_page4(cdf, stamp):
 
     eligible = [p for p in partners if partners[p]["n"] >= P4_MIN_CLOSED_FOR_RANKING]
 
-    fastest = sorted(eligible, key=lambda p: (partners[p]["mttr"], p.lower()))[:5]
-    best_fvr = sorted(eligible, key=lambda p: (-partners[p]["fvr"], -partners[p]["n"], p.lower()))[:5]
-    best_same = sorted(eligible, key=lambda p: (-partners[p]["same_pct"], -partners[p]["n"], p.lower()))[:5]
-
-    def small_rank(items, colour):
-        return rank_rows(items, colour, small=True).replace('class="rank sm"', 'class="rank sm xs"')
-
-    fast_list = small_rank(
-        [(raw_names.get(p, p), 1 / max(partners[p]["mttr"], 0.1), f'<b>{partners[p]["mttr"]:.1f}h</b>') for p in fastest],
-        "linear-gradient(90deg,#1E6FD0,#4FA3F7)",
-    )
-    fvr_list = small_rank(
-        [(raw_names.get(p, p), partners[p]["fvr"], f'<b>{partners[p]["fvr"]:.0f}%</b>') for p in best_fvr],
-        "linear-gradient(90deg,#28A745,#4CD964)",
-    )
-    same_list = small_rank(
-        [(raw_names.get(p, p), partners[p]["same_pct"], f'<b>{partners[p]["same_pct"]:.0f}%</b>') for p in best_same],
-        "linear-gradient(90deg,#7B3FE4,#A77BFF)",
-    )
-
-    side_cards = f"""
-<div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0">
-  <div class="card" style="flex:1;padding:10px 12px;min-width:0"><h3 style="font-size:17px">Top 5 Fastest MTTR <small style="font-size:13px">(hrs)</small></h3>{fast_list}</div>
-  <div class="card" style="flex:1;padding:10px 12px;min-width:0"><h3 style="font-size:17px">Top 5 by First Visit Res. <small style="font-size:13px">(%)</small></h3>{fvr_list}</div>
-  <div class="card" style="flex:1;padding:10px 12px;min-width:0"><h3 style="font-size:17px">Top 5 by Same Day SLA <small style="font-size:13px">(%)</small></h3>{same_list}</div>
-</div>"""
-
     live_cats = [c for c in CATEGORIES if cat_stats[c]["n"] > 0]
     takeaways = [f"Overall MTTR is {fh(overall['mttr'])} hrs (median {fh(overall['median'])})."]
 
@@ -761,10 +797,9 @@ def build_page4(cdf, stamp):
 <div class="page">
 {head}
 <div class="body">
-  {kpis}
-  {tiles}
-  <div class="row grow">{table_card}{side_cards}</div>
-  <div class="row">{profile_card}{take_panel}</div>
+  {profile_card}
+  {table_card}
+  {take_panel}
 </div>
 </div>"""
 
@@ -1373,6 +1408,7 @@ def main():
 </div>"""
 
     page4 = build_page4(cdf, stamp)
+    page5 = build_page5(cdf, stamp)
 
     # ============================================================
     # WRITE FILE & SERVE
@@ -1383,7 +1419,7 @@ def main():
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Partner Operations Pulse - {stamp}</title>
 <style>{CSS}{CSS_P4}</style></head>
-<body>{page1}{page2}{page3}{page4}</body></html>"""
+<body>{page1}{page2}{page3}{page4}{page5}</body></html>"""
 
     html_path = DATA_DIR / OUTPUT_HTML
 
