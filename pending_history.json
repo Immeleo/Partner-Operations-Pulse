@@ -166,5 +166,32 @@
    "Tetranet": 135,
    "Unassigned": 3
   }
+ },
+ "2026-10-15": {
+  "saved_at": "2026-10-15 09:31",
+  "total": 1985,
+  "partners": {
+   "Alternative": 52,
+   "Blockchain": 21,
+   "Camusat": 229,
+   "Corevantage": 39,
+   "Decko": 31,
+   "Egypro": 513,
+   "Fireside": 290,
+   "Geonet": 29,
+   "Hatikvah": 14,
+   "Huawei": 10,
+   "Kinde": 183,
+   "NextGen": 26,
+   "Optimax group": 110,
+   "Pavicon": 18,
+   "Powergen": 16,
+   "Quavatel": 25,
+   "Soliton": 97,
+   "Sovereign Comm": 114,
+   "Techminds": 14,
+   "Tetranet": 153,
+   "Unassigned": 1
+  }
  }
 }
